@@ -316,13 +316,17 @@ class Session:
 
     async def network_worker(self):
         log.info("NetworkTask started")
+        network_reconnect_retries = 0
 
         while True:
+            if network_reconnect_retries > 10:
+                raise ConnectionError(f'Failed to connect to server ...')
             packet = await self.connection.recv()
 
             if packet is None or len(packet) == 4:
                 if packet:
                     log.warning(f'Server sent "{Int.read(BytesIO(packet))}"')
+                    network_reconnect_retries += 1
 
                 if self.is_connected.is_set():
                     self.loop.create_task(self.restart())
