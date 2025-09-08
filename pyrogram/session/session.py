@@ -327,6 +327,8 @@ class Session:
                 if packet:
                     log.warning(f'Server sent "{Int.read(BytesIO(packet))}"')
                     network_reconnect_retries += 1
+                    if network_reconnect_retries > 10:
+                        break
 
                 if self.is_connected.is_set():
                     self.loop.create_task(self.restart())
