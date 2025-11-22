@@ -853,7 +853,7 @@ class Message(Object, Update):
                     channel_chat_created = True
                     service_type = enums.MessageServiceType.CHANNEL_CHAT_CREATED
             elif isinstance(action, raw.types.MessageActionChatEditPhoto):
-                new_chat_photo = types.Photo._parse(client, action.photo)
+                new_chat_photo = types.Animation._parse_chat_animation(client, action.photo) or types.Photo._parse(client, action.photo)
                 service_type = enums.MessageServiceType.NEW_CHAT_PHOTO
             elif isinstance(action, raw.types.MessageActionGroupCallScheduled):
                 video_chat_scheduled = types.VideoChatScheduled._parse(action)
@@ -1097,7 +1097,7 @@ class Message(Object, Update):
 
             elif isinstance(action, raw.types.MessageActionTodoAppendTasks):
                 service_type = enums.MessageServiceType.CHECKLIST_TASKS_ADDED
-                checklist_tasks_added = types.ChecklistTasksAdded._parse(client, message)
+                checklist_tasks_added = types.ChecklistTasksAdded._parse(client, message, users, chats)
 
             parsed_message = Message(
                 id=message.id,
@@ -1363,7 +1363,7 @@ class Message(Object, Update):
                     media_type = enums.MessageMediaType.PAID_MEDIA
                 elif isinstance(media, raw.types.MessageMediaToDo):
                     media_type = enums.MessageMediaType.CHECKLIST
-                    checklist = types.Checklist._parse(client, media, users)
+                    checklist = types.Checklist._parse(client, media, users, chats)
                 else:
                     media = None
                     media_type = enums.MessageMediaType.UNKNOWN
@@ -2358,10 +2358,10 @@ class Message(Object, Update):
 
         Parameters:
             phone_number (``str``):
-                Contact's phone number.
+                Phone number of the user.
 
             first_name (``str``):
-                Contact's first name.
+                First name of the user; 1-64 characters.
 
             quote (``bool``, *optional*):
                 If ``True``, the message will be sent as a reply to this message.
@@ -2369,10 +2369,10 @@ class Message(Object, Update):
                 Defaults to ``True`` in group chats and ``False`` in private chats.
 
             last_name (``str``, *optional*):
-                Contact's last name.
+                Last name of the user; 0-64 characters.
 
             vcard (``str``, *optional*):
-                Additional data about the contact in the form of a vCard, 0-2048 bytes
+                Additional data about the user in a form of `vCard <https://en.wikipedia.org/wiki/VCard>`_; 0-2048 bytes in length.
 
             disable_notification (``bool``, *optional*):
                 Sends the message silently.
@@ -4963,13 +4963,11 @@ class Message(Object, Update):
         """
         if self.service:
             raise ValueError(
-                "Service messages cannot be copied. chat_id: %s, message_id: %s",
-                self.chat.id, self.id
+                f"Service messages cannot be copied. chat_id: {self.chat.id}, message_id: {self.id}"
             )
         elif self.game and not (self._client.me and self._client.me.is_bot):
             raise ValueError(
-                "Users cannot send messages with Game media type. chat_id: %s, message_id: %s",
-                self.chat.id, self.id
+                f"Users cannot send messages with Game media type. chat_id: {self.chat.id}, message_id: {self.id}"
             )
         elif self.empty:
             raise ValueError("Empty messages cannot be copied.")
@@ -5016,7 +5014,7 @@ class Message(Object, Update):
                 caption = self.caption or ""
                 caption_entities = self.caption_entities
             if self.photo:
-                file_id = self.photo.file_id
+                file_id = self.photo.sizes[-1].file_id
             elif self.audio:
                 file_id = self.audio.file_id
             elif self.document:
@@ -5029,8 +5027,8 @@ class Message(Object, Update):
                     parse_mode=parse_mode,
                     caption_entities=caption_entities,
                     show_caption_above_media=show_caption_above_media or self.show_caption_above_media,
-                    cover=video_cover,
-                    start_timestamp=video_start_timestamp,
+                    cover=video_cover if video_cover else self.video.cover.sizes[-1].file_id if self.video.cover else None,
+                    start_timestamp=video_start_timestamp if video_start_timestamp else self.video.start_timestamp,
                     has_spoiler=self.has_media_spoiler,
                     disable_notification=disable_notification,
                     protect_content=self.has_protected_content if protect_content is None else protect_content,
