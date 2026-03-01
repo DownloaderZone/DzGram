@@ -1,5 +1,5 @@
 #  Pyrogram - Telegram MTProto API Client Library for Python
-#  Copyright (C) 2017-present Dan <https://github.com/delivrance>
+#  Copyright (C) 2017-present <https://github.com/KurimuzonAkuma>
 #
 #  This file is part of Pyrogram.
 #
@@ -19,20 +19,15 @@
 from typing import Union
 
 import pyrogram
-from pyrogram import types, utils, raw
+from pyrogram import raw
 
 
-class DeleteForumTopic:
-    async def delete_forum_topic(
+class GetChatAudiosCount:
+    async def get_chat_audios_count(
         self: "pyrogram.Client",
-        chat_id: Union[int, str],
-        message_thread_id: int
+        chat_id: Union[int, str]
     ) -> int:
-        """Use this method to delete a forum topic along with all its messages in a forum supergroup chat or a private chat with a user.
-        
-        In the case of a supergroup chat the bot must be an administrator in the chat for this to work and must have the ``can_delete_messages`` administrator rights
-
-        unless the user is creator of the topic, the topic has no messages from other users and has at most 11 messages.
+        """Get the total count of audios for a chat.
 
         .. include:: /_includes/usable-by/users-bots.rst
 
@@ -42,25 +37,26 @@ class DeleteForumTopic:
                 For your personal cloud (Saved Messages) you can simply use "me" or "self".
                 For a contact that exists in your Telegram address book you can use his phone number (str).
 
-            message_thread_id (``int``):
-                Unique identifier for the target message thread of the forum topic
-
         Returns:
-            ``int``: Amount of affected messages
+            ``int``: On success, the user profile audios count is returned.
 
         Example:
             .. code-block:: python
 
-                # Create a new Topic
-                message = await app.create_forum_topic(chat, "Topic Title")
-                # Delete the Topic
-                await app.delete_forum_topic(chat, message.id)
+                count = await app.get_chat_audios_count("me")
+                print(count)
+
         """
 
+        peer_id = await self.resolve_peer(chat_id)
+
         r = await self.invoke(
-            raw.functions.messages.DeleteTopicHistory(
-                peer=await self.resolve_peer(chat_id),
-                top_msg_id=message_thread_id
+            raw.functions.users.GetSavedMusic(
+                id=peer_id,
+                offset=0,
+                limit=1,
+                hash=0
             )
         )
-        return r.pts_count
+
+        return r.count

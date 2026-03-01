@@ -219,6 +219,9 @@ class Chat(Object):
             Distance in meters of this group chat from your location.
             Returned only in :meth:`~pyrogram.Client.get_nearby_chats`.
 
+        location (:obj:`~pyrogram.types.ChatLocation`, *optional*):
+            For supergroups, the location to which the supergroup is connected.
+
         send_as_chat (:obj:`~pyrogram.types.Chat`, *optional*):
             The default "send_as" chat.
             Returned only in :meth:`~pyrogram.Client.get_chat`.
@@ -243,10 +246,13 @@ class Chat(Object):
             True, if gifts can be sent to the chat.
 
         paid_message_star_count (``int``, *optional*):
-            Number of Telegram Stars that must be paid by non-administrator users of the supergroup chat for each sent message.
+            The number of Telegram Stars a general user have to pay to send a message to the chat.
 
         has_automatic_translation (``bool``, *optional*):
             True, if automatic translation of messages is enabled in the channel.
+
+        first_profile_audio (:obj:`~pyrogram.types.Audio`, *optional*):
+            For private chats, the first audio added to the profile of the user.
 
         full_name (``str``, *property*):
             Full name of the other party in a private chat, for private chats and bots.
@@ -295,6 +301,7 @@ class Chat(Object):
         permissions: "types.ChatPermissions" = None,
         admin_privileges: "types.ChatPrivileges" = None,
         distance: int = None,
+        location: "types.ChatLocation" = None,
         linked_chat: "types.Chat" = None,
         send_as_chat: "types.Chat" = None,
         personal_chat: "types.Chat" = None,
@@ -324,6 +331,7 @@ class Chat(Object):
         paid_message_star_count: int = None,
         has_automatic_translation: bool = None,
         is_direct_messages: bool = None,
+        first_profile_audio: "types.Audio" = None,
         _raw: Union[
             "raw.types.ChatInvite",
             "raw.types.Channel",
@@ -363,6 +371,7 @@ class Chat(Object):
         self.permissions = permissions
         self.admin_privileges = admin_privileges
         self.distance = distance
+        self.location = location
         self.linked_chat = linked_chat
         self.send_as_chat = send_as_chat
         self.available_reactions = available_reactions
@@ -401,6 +410,7 @@ class Chat(Object):
         self.paid_message_star_count = paid_message_star_count
         self.has_automatic_translation = has_automatic_translation
         self.is_direct_messages = is_direct_messages
+        self.first_profile_audio = first_profile_audio
         self._raw = _raw
 
     @staticmethod
@@ -518,6 +528,7 @@ class Chat(Object):
                 client=client,
                 is_banned=True,
                 banned_until_date=utils.timestamp_to_datetime(getattr(channel, "until_date", None)),
+                is_direct_messages=channel.monoforum,
                 _raw=channel
             )
 
@@ -666,6 +677,19 @@ class Chat(Object):
             if getattr(full_user, "wallpaper", None):
                 parsed_chat.background = types.ChatBackground._parse(client, full_user.wallpaper)
             parsed_chat.gift_count = full_user.stargifts_count
+            
+            if full_user.saved_music:
+                doc = full_user.saved_music
+                attributes = {type(i): i for i in doc.attributes}
+                file_name = getattr(
+                    attributes.get(
+                        raw.types.DocumentAttributeFilename, None
+                    ), "file_name", None
+                )
+                audio_attributes = attributes[raw.types.DocumentAttributeAudio]
+                parsed_chat.first_profile_audio = types.Audio._parse(
+                    client, doc, audio_attributes, file_name
+                )
 
         else:
             full_chat = chat_full.full_chat
@@ -723,6 +747,15 @@ class Chat(Object):
                 parent_chat_raw = chats.get(chat_raw.linked_monoforum_id, None)
                 if parent_chat_raw:
                     parsed_chat.parent_chat = Chat._parse_channel_chat(client, parent_chat_raw)
+
+                if full_chat.location:
+                    parsed_chat.location = types.ChatLocation(
+                        location=types.Location(
+                            latitude=full_chat.location.geo_point.lat,
+                            longitude=full_chat.location.geo_point.long
+                        ),
+                        address=full_chat.location.address
+                    )
 
             parsed_chat.message_auto_delete_time = getattr(full_chat, "ttl_period")
 
