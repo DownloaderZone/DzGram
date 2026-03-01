@@ -1,5 +1,5 @@
 #  Pyrogram - Telegram MTProto API Client Library for Python
-#  Copyright (C) 2017-present Dan <https://github.com/delivrance>
+#  Copyright (C) 2017-present KurimuzonAkuma <https://github.com/KurimuzonAkuma>
 #
 #  This file is part of Pyrogram.
 #
@@ -16,28 +16,22 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
-__fork_name__ = "pyrotgfork"
-__version__ = "2.2.19"
-__license__ = "GNU Lesser General Public License v3.0 (LGPL-3.0)"
-__copyright__ = "Copyright (C) 2017-present Dan <https://github.com/delivrance>"
+from enum import auto
 
-from concurrent.futures.thread import ThreadPoolExecutor
+from .auto_name import AutoName
 
 
-class StopTransmission(Exception):
-    pass
+class ButtonStyle(AutoName):
+    """Button style type enumeration used in :obj:`~pyrogram.types.KeyboardButton` and :obj:`~pyrogram.types.InlineKeyboardButton` to describe the style of a button."""
 
+    DEFAULT = auto()
+    "The button has default style"
 
-class StopPropagation(StopAsyncIteration):
-    pass
+    PRIMARY = auto()
+    "The button has dark blue color"
 
+    DANGER = auto()
+    "The button has red color"
 
-class ContinuePropagation(StopAsyncIteration):
-    pass
-
-
-from . import raw, types, filters, handlers, emoji, enums
-from .client import Client
-from .sync import idle, compose
-
-crypto_executor = ThreadPoolExecutor(1, thread_name_prefix="CryptoWorker")
+    SUCCESS = auto()
+    "The button has green color"

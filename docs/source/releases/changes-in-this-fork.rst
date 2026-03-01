@@ -32,6 +32,33 @@ Changes in this Fork
 =====================
 
 +------------------------+
+| Scheme layer used: 223 |
++------------------------+
+
+
+- Added the field ``can_edit_tag`` to the class :obj:`~pyrogram.types.ChatPermissions`.
+- Added the field ``tag`` to the class :obj:`~pyrogram.types.ChatMember`.
+- Added the field ``can_manage_tags`` to the class :obj:`~pyrogram.types.ChatPrivileges`.
+- Added the methods :meth:`~pyrogram.Client.set_chat_member_tag` and :meth:`~pyrogram.Client.process_chat_protected_content_disable_request`. Updated the method :meth:`~pyyrogram.Client.set_chat_protected_content` to return the appropriate service message, if available.
+- Added the field ``sender_tag`` to the class :obj:`~pyrogram.types.Message`.
+- Add ``location`` in :obj:`~pyrogram.types.Chat` and add missing parameters in :meth:`~pyrogram.Client.create_supergroup`.
+- fix: :meth:`~pyrogram.Client.get_media_group` concurrent logic (contributed by @Alekzum).
+- properly implement in_memory arg in client to support session string. (contributed by @anonymousx97 in `#222 <https://github.com/KurimuzonAkuma/kurigram/pull/222>`__).
+- View `new and changed <https://telegramplayground.github.io/TG-APIs/TL/diff/tdlib.html?from=222&to=223>`__ `raw API methods <https://telegramplayground.github.io/TG-APIs/TL/diff/tdesktop.html?from=222&to=223>`__.
+
++------------------------+
+| Scheme layer used: 222 |
++------------------------+
+
+- Added the field ``first_profile_audio`` to the class :obj:`~pyrogram.types.Chat` and the methods :meth:`~pyrogram.Client.get_chat_audios`, :meth:`~pyrogram.Client.get_chat_audios_count`, :meth:`~pyrogram.Client.add_profile_audio`, :meth:`~pyrogram.Client.remove_profile_audio`, :meth:`~pyrogram.Client.set_profile_audio_position`.
+- Removed the methods :meth:`~pyrogram.Client.get_received_gifts`, :meth:`~pyrogram.Client.sell_gift`, :meth:`~pyrogram.Client.send_gift`, :meth:`~pyrogram.Client.toggle_gift_is_saved` and the :obj:`~pyrogram.types.ReceivedGift`.
+- Removed the field ``alternative_videos`` from the class :obj:`~pyrogram.types.Message` and added the class :obj:`~pyrogram.types.VideoQuality` and the field ``qualities`` to the class :obj:`~pyrogram.types.Video` allowing to get information about other available qualities of a video.
+- Added the fields ``icon_custom_emoji_id`` and ``style`` to the classes :obj:`~pyrogram.types.InlineKeyboardButton` and :obj:`~pyrogram.types.KeyboardButton`.
+- Added the fields ``has_topics_enabled`` and ``allows_users_to_create_topics`` to the class :obj:`~pyrogram.types.User`, which can be used to determine whether forum topic mode is enabled for the bot in private chats.
+- Added the field ``is_name_implicit`` to the classes :obj:`~pyrogram.types.ForumTopic` and :obj:`~pyrogram.types.ForumTopicCreated`.
+- View `new and changed <https://telegramplayground.github.io/TG-APIs/TL/diff/tdlib.html?from=220&to=222>`__ `raw API methods <https://telegramplayground.github.io/TG-APIs/TL/diff/tdesktop.html?from=220&to=222>`__.
+
++------------------------+
 | Scheme layer used: 220 |
 +------------------------+
 
