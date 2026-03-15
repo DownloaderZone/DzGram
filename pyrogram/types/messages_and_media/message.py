@@ -64,7 +64,7 @@ class Message(Object, Update):
             Unique message identifier inside this chat.
 
         message_thread_id (``int``, *optional*):
-            Unique identifier of a message thread to which the message belongs; for supergroups only
+            Unique identifier of a message thread or forum topic to which the message belongs; for supergroups and private chats only.
 
         direct_messages_topic (:obj:`~pyrogram.types.DirectMessagesTopic`, *optional*):
             Information about the direct messages chat topic that contains the message.
@@ -1522,27 +1522,24 @@ class Message(Object, Update):
         if getattr(message, "reply_to", None):
             parsed_message.reply_to_message_id = None
             parsed_message.message_thread_id = None
+
+            if isinstance(message.reply_to, raw.types.MessageReplyStoryHeader):
+                parsed_message.reply_to_story = await types.Story._parse(client, users, chats, None, message.reply_to, None, None, None)
+
             if isinstance(message.reply_to, raw.types.MessageReplyHeader):
                 parsed_message.reply_to_checklist_task_id = message.reply_to.todo_item_id
                 parsed_message.reply_to_message_id = message.reply_to.reply_to_msg_id
                 parsed_message.message_thread_id = message.reply_to.reply_to_top_id
                 if message.reply_to.forum_topic:
                     parsed_message.is_topic_message = True
-                    if message.reply_to.reply_to_top_id:
-                        parsed_message.message_thread_id = message.reply_to.reply_to_top_id
-                    else:
+                    if not message.reply_to.reply_to_top_id:
                         parsed_message.message_thread_id = message.reply_to.reply_to_msg_id
-                    if not parsed_message.message_thread_id:
-                        parsed_message.message_thread_id = 1  # https://t.me/c/1279877202/31475
                 parsed_message.quote = types.TextQuote._parse(
                     client,
                     chats,
                     users,
                     message.reply_to
                 )
-
-            if isinstance(message.reply_to, raw.types.MessageReplyStoryHeader):
-                parsed_message.reply_to_story = await types.Story._parse(client, users, chats, None, message.reply_to, None, None, None)
 
             if replies:
                 try:
@@ -1596,8 +1593,17 @@ class Message(Object, Update):
             }
         ):
             if self.chat.username:
-                return f"https://t.me/{self.chat.username}{f'/{self.message_thread_id}' if self.message_thread_id else ''}/{self.id}"
-            return f"https://t.me/c/{utils.get_channel_id(self.chat.id)}{f'/{self.message_thread_id}' if self.message_thread_id else ''}/{self.id}"
+                if self.chat.is_forum and self.is_topic_message:
+                    return f"https://t.me/{self.chat.username}/{self.message_thread_id}/{self.id}"
+                if self.chat.is_forum:
+                    return f"https://t.me/{self.chat.username}/1/{self.id}"
+                return f"https://t.me/{self.chat.username}/{self.id}"
+            if self.chat.is_forum and self.is_topic_message:
+                return f"https://t.me/c/{utils.get_channel_id(self.chat.id)}/{self.message_thread_id}/{self.id}"
+            # https://t.me/c/1279877202/31475
+            if self.chat.is_forum:
+                return f"https://t.me/{self.chat.username}/1/{self.id}"
+            return f"https://t.me/c/{utils.get_channel_id(self.chat.id)}/{self.id}"
 
     @property
     def content(self) -> Str:
@@ -5307,7 +5313,7 @@ class Message(Object, Update):
             -   The result of :meth:`~pyrogram.Client.request_callback_answer` in case of inline callback button clicks.
             -   The result of :meth:`~Message.reply()` in case of normal button clicks.
             -   A string in case the inline button is a URL, a *switch_inline_query* or a
-                *switch_inline_query_current_chat* button.
+                *switch_inline_query_current_chat* button or a *copy_text* button.
             -   A string URL with the user details, in case of a LoginUrl button.
             -   A :obj:`~pyrogram.types.SwitchInlineQueryChosenChat` object in case of a ``switch_inline_query_chosen_chat``.
             -   A :obj:`~pyrogram.types.User` object in case of a ``KeyboardButtonUserProfile`` button.
@@ -5442,6 +5448,8 @@ class Message(Object, Update):
                 return button.switch_inline_query_current_chat
             elif button.switch_inline_query_chosen_chat:
                 return button.switch_inline_query_chosen_chat
+            elif button.copy_text:
+                return button.copy_text.text
             else:
                 raise ValueError("This button is not supported yet")
         else:
