@@ -156,6 +156,9 @@ class User(Object, Update):
         can_read_all_group_messages (``bool``, *optional*):
             True, if privacy mode is disabled for the bot. Returned only in get_me.
 
+        supports_guest_queries (``bool``, *optional*):
+            True, if the bot supports guest queries from chats it is not a member of. Returned only in get_me.
+
         supports_inline_queries (``bool``, *optional*):
             True, if the bot supports inline queries. Returned only in get_me.
 
@@ -245,6 +248,7 @@ class User(Object, Update):
         can_be_added_to_attachment_menu: bool = None,
         can_join_groups: bool = None,
         can_read_all_group_messages: bool = None,
+        supports_guest_queries: bool = None,
         supports_inline_queries: bool = None,
         restricts_new_chats: bool = None,
         inline_need_location: bool = None,
@@ -293,6 +297,7 @@ class User(Object, Update):
         self.can_be_added_to_attachment_menu = can_be_added_to_attachment_menu
         self.can_join_groups = can_join_groups
         self.can_read_all_group_messages = can_read_all_group_messages
+        self.supports_guest_queries = supports_guest_queries
         self.supports_inline_queries = supports_inline_queries
         self.restricts_new_chats = restricts_new_chats
         self.inline_need_location = inline_need_location
@@ -396,6 +401,7 @@ class User(Object, Update):
             parsed_user.can_join_groups = not bool(user.bot_nochats or None)
             parsed_user.can_read_all_group_messages = user.bot_chat_history or None
             parsed_user.inline_query_placeholder = user.bot_inline_placeholder or None
+            parsed_user.supports_guest_queries = user.bot_guestchat or None
             parsed_user.supports_inline_queries = bool(parsed_user.inline_query_placeholder)
             parsed_user.inline_need_location = user.bot_inline_geo or None
             parsed_user.can_connect_to_business = user.bot_business or None
