@@ -90,7 +90,8 @@ class Message(Object, Update):
             For messages sent in basic groups or supergroup administrators, the current custom title or tag must be used instead.
 
         date (:py:obj:`~datetime.datetime`, *optional*):
-            Date the message was sent.
+            If this is not a ``scheduled`` message, Date the message was sent.
+            If this is a ``scheduled`` message, Date when the message will be sent. The date must be within 367 days in the future.
 
         business_connection_id (``str``, *optional*):
             Unique identifier of the business connection from which the message was received.
@@ -469,6 +470,30 @@ class Message(Object, Update):
         screenshot_taken (:obj:`~pyrogram.types.ScreenshotTaken`, *optional*):
             A service message that a screenshot of a message in the chat has been taken.
 
+        guest_bot_caller_user (:obj:`~pyrogram.types.User`, *optional*):
+            For a message sent by a guest bot, this is the user whose original message triggered the bot's response.
+            
+        guest_bot_caller_chat (:obj:`~pyrogram.types.Chat`, *optional*):
+            For a message sent by a guest bot, this is the chat whose original message triggered the bot's response
+
+        summary_language_code (``str``, *optional*):
+            IETF language tag of the message language on which it can be summarized; empty if summary isn't available for the message.
+
+        is_paid_star_suggested_post (``bool``, *optional*):
+            True, if the message is a suggested channel post which was paid in Telegram Stars; a warning must be shown if the message is deleted in less than ``"stars_suggested_post_age_min"`` seconds after sending.
+
+        is_paid_ton_suggested_post (``bool``, *optional*):
+            True, if the message is a suggested channel post which was paid in Toncoins; a warning must be shown if the message is deleted in less than ``"stars_suggested_post_age_min"`` seconds after sending.
+
+        restriction_reason (List of :obj:`~pyrogram.types.Restriction`, *optional*):
+            Contains a list of human-readable description of the reason why access to this message must be restricted.
+
+        schedule_repeat_period (``int``, *optional*):
+            Period after which the message will be sent again; in seconds; 0 if never.
+            For Telegram Premium users only.
+            May be non-zero only in :meth:`~pyrogram.Client.send_message` and :meth:`~pyrogram.Client.forward_message` with one message requests.
+            Must be one of 0, 86400, 7 * 86400, 14 * 86400, 30 * 86400, 91 * 86400, 182 * 86400, 365 * 86400, or additionally 60, or 300 in the Test DC.
+
         link (``str``, *property*):
             Generate a link to this message, only for supergroups and channels. Can be None if the message cannot have a link.
 
@@ -618,6 +643,13 @@ class Message(Object, Update):
         managed_bot_created: "types.ManagedBotCreated" = None,
         poll_option_added: "types.PollOptionAdded" = None,
         poll_option_deleted: "types.PollOptionDeleted" = None,
+        guest_bot_caller_user: "types.User" = None,
+        guest_bot_caller_chat: "types.Chat" = None,
+        summary_language_code: str = None,
+        is_paid_star_suggested_post: bool = None,
+        is_paid_ton_suggested_post: bool = None,
+        restriction_reason: "types.Restriction" = None,
+        schedule_repeat_period: int = None,
         _raw = None
     ):
         super().__init__(client)
@@ -745,6 +777,13 @@ class Message(Object, Update):
         self.managed_bot_created = managed_bot_created
         self.poll_option_added = poll_option_added
         self.poll_option_deleted = poll_option_deleted
+        self.guest_bot_caller_user = guest_bot_caller_user
+        self.guest_bot_caller_chat = guest_bot_caller_chat
+        self.summary_language_code = summary_language_code
+        self.is_paid_star_suggested_post = is_paid_star_suggested_post
+        self.is_paid_ton_suggested_post = is_paid_ton_suggested_post
+        self.restriction_reason = restriction_reason
+        self.schedule_repeat_period = schedule_repeat_period
         self._raw = _raw
 
     @staticmethod
@@ -1459,6 +1498,16 @@ class Message(Object, Update):
 
             reactions = types.MessageReactions._parse(client, message.reactions)
 
+            guest_bot_caller_user = None
+            guest_bot_caller_chat = None
+            if message.guestchat_via_from:
+                guestchat_nr_peer_id = utils.get_peer_id(message.guestchat_via_from)
+                guestchat_r_peer_id = utils.get_raw_peer_id(message.guestchat_via_from)
+                if guestchat_nr_peer_id > 0:
+                    guest_bot_caller_user = types.User._parse(client, users.get(guestchat_r_peer_id))
+                else:
+                    guest_bot_caller_chat = types.Chat._parse_chat(client, chats.get(guestchat_r_peer_id))
+
             parsed_message = Message(
                 id=message.id,
                 date=utils.timestamp_to_datetime(message.date),
@@ -1523,10 +1572,20 @@ class Message(Object, Update):
                 reactions=reactions,
                 client=client,
                 link_preview_options=link_preview_options,
-                effect_id=getattr(message, "effect", None),
+                effect_id=str(message.effect) if message.effect else None,
                 show_caption_above_media=show_caption_above_media,
                 paid_media=paid_media,
-                paid_star_count=message.paid_message_stars
+                paid_star_count=message.paid_message_stars,
+                guest_bot_caller_user=guest_bot_caller_user,
+                guest_bot_caller_chat=guest_bot_caller_chat,
+                summary_language_code=message.summary_from_language,
+                is_paid_star_suggested_post=message.paid_suggested_post_stars,
+                is_paid_ton_suggested_post=message.paid_suggested_post_ton,
+                restriction_reason=types.List(
+                    types.Restriction._parse(reason)
+                    for reason in (message.restriction_reason or [])
+                ) or None,
+                schedule_repeat_period=message.schedule_repeat_period,
             )
 
             parsed_message.external_reply = await types.ExternalReplyInfo._parse(
@@ -1779,7 +1838,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
         Returns:
             On success, the sent Message is returned.
@@ -1939,7 +1998,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -2131,7 +2190,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -2293,7 +2352,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             reply_markup (:obj:`~pyrogram.types.InlineKeyboardMarkup` | :obj:`~pyrogram.types.ReplyKeyboardMarkup` | :obj:`~pyrogram.types.ReplyKeyboardRemove` | :obj:`~pyrogram.types.ForceReply`, *optional*):
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
@@ -2476,7 +2535,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -2626,7 +2685,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -2964,7 +3023,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -3068,7 +3127,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -3200,7 +3259,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -3458,7 +3517,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             message_effect_id (``int`` ``64-bit``, *optional*):
                 Unique identifier of the message effect to be added to the message; for private chats only.
@@ -3622,7 +3681,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             progress (``Callable``, *optional*):
                 Pass a callback function to view the file transmission progress.
@@ -3762,7 +3821,7 @@ class Message(Object, Update):
                 Users will receive a notification with no sound.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             protect_content (``bool``, *optional*):
                 Pass True if the content of the message must be protected from forwarding and saving; for bots only.
@@ -3974,7 +4033,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             progress (``Callable``, *optional*):
                 Pass a callback function to view the file transmission progress.
@@ -4159,7 +4218,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             ttl_seconds (``int``, *optional*):
                 The message will be self-destructed in the specified time after its content was opened.
@@ -4333,7 +4392,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             ttl_seconds (``int``, *optional*):
                 The message will be self-destructed in the specified time after its content was opened.
@@ -4856,7 +4915,7 @@ class Message(Object, Update):
                 List of special entities that appear in the caption, which can be specified instead of *parse_mode*.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             has_spoiler (``bool``, *optional*):
                 True, if the message media is covered by a spoiler animation.
@@ -4958,7 +5017,7 @@ class Message(Object, Update):
                 Unique identifier of the message effect to be added to the message; for private chats only.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
         Returns:
             On success, the forwarded Message is returned.
@@ -5075,7 +5134,7 @@ class Message(Object, Update):
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
 
             schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent.
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
 
             business_connection_id (``str``, *optional*):
                 Unique identifier of the business connection on behalf of which the message will be sent
