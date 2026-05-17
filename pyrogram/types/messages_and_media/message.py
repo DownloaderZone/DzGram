@@ -6216,3 +6216,40 @@ class Message(Object, Update):
             star_count=star_count,
             paid_reaction_type=paid_reaction_type
         )
+
+    async def answer(
+        self,
+        results: list["types.InlineQueryResult"],
+    ):
+        """Bound method *answer* of :obj:`~pyrogram.types.Message`.
+
+        Use this method as a shortcut for:
+
+        .. code-block:: python
+
+            await client.answer_guest_query(
+                message.guest_query_id,
+                results=[...]
+            )
+
+        Example:
+            .. code-block:: python
+
+                await message.answer(
+                    InlineQueryResultArticle(
+                        "Title",
+                        InputTextMessageContent("Message content")
+                    )
+                )
+
+        Parameters:
+            results (:obj:`~pyrogram.types.InlineQueryResult`):
+                A result describing the message to be sent in response for the guest query.
+
+        """
+        if not message.guest_query_id:
+            raise ValueError("This method cannot be used for this message")
+        return await self._client.answer_guest_query(
+            inline_query_id=self.guest_query_id,
+            results=results,
+        )
