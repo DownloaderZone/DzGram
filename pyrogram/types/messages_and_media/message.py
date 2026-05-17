@@ -93,6 +93,11 @@ class Message(Object, Update):
             If this is not a ``scheduled`` message, Date the message was sent.
             If this is a ``scheduled`` message, Date when the message will be sent. The date must be within 367 days in the future.
 
+        guest_query_id (``str``, *optional*):
+            The unique identifier for the guest query.
+            Use this identifier with the method :meth:`~pyrogram.Client.answer_guest_query` to send a response message.
+            If non-empty, the message belongs to the chat where the guest bot was summoned, which may not coincide with other existing bot chats sharing the same identifier.
+
         business_connection_id (``str``, *optional*):
             Unique identifier of the business connection from which the message was received.
             If non-empty, the message belongs to a chat of the corresponding business account that is independent from any potential bot chat which might share the same identifier.
@@ -520,6 +525,7 @@ class Message(Object, Update):
         sender_business_bot: "types.User" = None,
         sender_tag: str = None,
         date: datetime = None,
+        guest_query_id: str = None,
         business_connection_id: str = None,
         chat: "types.Chat" = None,
         forward_origin: "types.MessageOrigin" = None,
@@ -760,6 +766,7 @@ class Message(Object, Update):
         self.custom_action = custom_action
         self.sender_business_bot = sender_business_bot
         self.sender_tag = sender_tag
+        self.guest_query_id = guest_query_id
         self.business_connection_id = business_connection_id
         self.successful_payment = successful_payment
         self.paid_media = paid_media
@@ -795,8 +802,22 @@ class Message(Object, Update):
         is_scheduled: bool = False,
         replies: int = 1,
         business_connection_id: str = None,
+        guest_query_id: int = None,
+        guest_reference_messages: list[raw.base.Message] = [],
         raw_reply_to_message: raw.base.Message = None
     ):
+        # Pre-parse referenced messages so they get cached before the main message
+        guest_parsed_messages: dict[int, "Message"] = {}
+        for ref in guest_reference_messages:
+            guest_parsed_messages[ref.id] = await pyrogram.types.Message._parse(
+                client,
+                ref,
+                users,
+                chats,
+                replies=0,
+                guest_query_id=guest_query_id,
+            )
+
         peer_id = utils.get_raw_peer_id(message.peer_id)
 
         if isinstance(message, raw.types.MessageEmpty):
@@ -1602,6 +1623,9 @@ class Message(Object, Update):
 
             parsed_message.is_from_offline = getattr(message, "offline", None)
 
+            if guest_query_id:
+                parsed_message.guest_query_id = str(guest_query_id)
+
             if (
                 forward_header and
                 forward_header.saved_from_peer and
@@ -1662,6 +1686,7 @@ class Message(Object, Update):
 
         if business_connection_id:
             parsed_message.business_connection_id = business_connection_id
+
         if raw_reply_to_message:
             parsed_message.reply_to_message = await types.Message._parse(
                 client,
