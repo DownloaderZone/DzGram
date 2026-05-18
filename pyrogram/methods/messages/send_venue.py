@@ -163,17 +163,17 @@ class SendVenue:
         provider = ""
         venue_id = ""
         venue_type = ""
-        if (
-            google_place_id != "" and
-            google_place_type != ""
-        ):
+        if any([
+            google_place_id,
+            google_place_type,
+        ]):
             provider = "gplaces"
             venue_id = google_place_id
             venue_type = google_place_type
-        if (
-            foursquare_id != "" and
-            foursquare_type != ""
-        ):
+        if any([
+            foursquare_id,
+            foursquare_type,
+        ])::
             provider = "foursquare"
             venue_id = foursquare_id
             venue_type = foursquare_type
