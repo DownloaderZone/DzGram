@@ -115,154 +115,71 @@ class InputMediaLivePhoto(InputMedia):
         if is_bytes_io_sp and not hasattr(self.photo, "name"):
             self.photo.name = "media"
 
+        # 1. Resolve uploaded_media
         if is_uploaded_file:
-            if is_uploaded_file_sp:
-                uploaded_media = await client.invoke(
-                    raw.functions.messages.UploadMedia(
-                        peer=peer,
-                        media=raw.types.InputMediaUploadedDocument(
-                            mime_type=client.guess_mime_type(self.media) or "video/mp4",
-                            file=await client.save_file(
-                                self.media, progress=progress, progress_args=progress_args
-                            ),
-                            spoiler=self.has_spoiler,
-                            attributes=[
-                                raw.types.DocumentAttributeVideo(
-                                    duration=duration,
-                                    w=width,
-                                    h=height,
-                                ),
-                            ],
+            uploaded_media = await client.invoke(
+                raw.functions.messages.UploadMedia(
+                    peer=peer,
+                    media=raw.types.InputMediaUploadedDocument(
+                        mime_type=client.guess_mime_type(self.media) or "video/mp4",
+                        file=await client.save_file(
+                            self.media, progress=progress, progress_args=progress_args
                         ),
-                    ),
-                )
-                uploaded_photo = await client.invoke(
-                    raw.functions.messages.UploadMedia(
-                        peer=peer,
-                        media=raw.types.InputMediaUploadedPhoto(
-                            video=await client.save_file(
-                                self.media, progress=progress, progress_args=progress_args
+                        spoiler=self.has_spoiler,
+                        attributes=[
+                            raw.types.DocumentAttributeVideo(
+                                duration=duration,
+                                w=width,
+                                h=height,
                             ),
-                            file=await client.save_file(
-                                self.photo, progress=progress, progress_args=progress_args
-                            ),
-                            live_photo=True,
-                            spoiler=self.has_spoiler,
-                        ),
-                    )
-                )
-                media = raw.types.InputMediaPhoto(
-                    id=raw.types.InputPhoto(
-                        id=uploaded_photo.photo.id,
-                        access_hash=uploaded_photo.photo.access_hash,
-                        file_reference=uploaded_photo.photo.file_reference,
+                        ],
                     ),
-                    live_photo=True,
-                    spoiler=self.has_spoiler,
-                    video=raw.types.InputDocument(
-                        id=uploaded_media.document.id,
-                        access_hash=uploaded_media.document.access_hash,
-                        file_reference=uploaded_media.document.file_reference,
-                    )
-                )
-            else:
-                uploaded_media = await client.invoke(
-                    raw.functions.messages.UploadMedia(
-                        peer=peer,
-                        media=raw.types.InputMediaUploadedDocument(
-                            mime_type=client.guess_mime_type(self.media) or "video/mp4",
-                            file=await client.save_file(
-                                self.media, progress=progress, progress_args=progress_args
-                            ),
-                            spoiler=self.has_spoiler,
-                            attributes=[
-                                raw.types.DocumentAttributeVideo(
-                                    duration=duration,
-                                    w=width,
-                                    h=height,
-                                ),
-                            ],
-                        ),
-                    ),
-                )
-                uploaded_photo = utils.get_input_media_from_file_id(
-                    self.photo,
-                    FileType.PHOTO,
-                    has_spoiler=self.has_spoiler,
-                )
-                media = raw.types.InputMediaPhoto(
-                    id=raw.types.InputPhoto(
-                        id=uploaded_photo.photo.id,
-                        access_hash=uploaded_photo.photo.access_hash,
-                        file_reference=uploaded_photo.photo.file_reference,
-                    ),
-                    live_photo=True,
-                    spoiler=self.has_spoiler,
-                    video=raw.types.InputDocument(
-                        id=uploaded_media.document.id,
-                        access_hash=uploaded_media.document.access_hash,
-                        file_reference=uploaded_media.document.file_reference,
-                    )
-                )
+                ),
+            )
         else:
-            if is_uploaded_file_sp:
-                uploaded_media = utils.get_input_media_from_file_id(
-                    self.media,
-                    FileType.VIDEO,
-                    has_spoiler=self.has_spoiler,
-                )
-                uploaded_photo = await client.invoke(
-                    raw.functions.messages.UploadMedia(
-                        peer=peer,
-                        media=raw.types.InputMediaUploadedPhoto(
-                            video=await client.save_file(
-                                self.media, progress=progress, progress_args=progress_args
-                            ),
-                            file=await client.save_file(
-                                self.photo, progress=progress, progress_args=progress_args
-                            ),
-                            live_photo=True,
-                            spoiler=self.has_spoiler,
+            uploaded_media = utils.get_input_media_from_file_id(
+                self.media,
+                FileType.VIDEO,
+                has_spoiler=self.has_spoiler,
+            )
+
+        # 2. Resolve uploaded_photo
+        if is_uploaded_file_sp:
+            uploaded_photo = await client.invoke(
+                raw.functions.messages.UploadMedia(
+                    peer=peer,
+                    media=raw.types.InputMediaUploadedPhoto(
+                        video=await client.save_file(
+                            self.photo, progress=progress, progress_args=progress_args
                         ),
-                    )
-                )
-                media = raw.types.InputMediaPhoto(
-                    id=raw.types.InputPhoto(
-                        id=uploaded_photo.photo.id,
-                        access_hash=uploaded_photo.photo.access_hash,
-                        file_reference=uploaded_photo.photo.file_reference,
+                        file=await client.save_file(
+                            self.photo, progress=progress, progress_args=progress_args
+                        ),
+                        live_photo=True,
+                        spoiler=self.has_spoiler,
                     ),
-                    live_photo=True,
-                    spoiler=self.has_spoiler,
-                    video=raw.types.InputDocument(
-                        id=uploaded_media.document.id,
-                        access_hash=uploaded_media.document.access_hash,
-                        file_reference=uploaded_media.document.file_reference,
-                    )
                 )
-            else:
-                uploaded_media = utils.get_input_media_from_file_id(
-                    self.media,
-                    FileType.VIDEO,
-                    has_spoiler=self.has_spoiler,
-                )
-                uploaded_photo = utils.get_input_media_from_file_id(
-                    self.photo,
-                    FileType.PHOTO,
-                    has_spoiler=self.has_spoiler,
-                )
-                media = raw.types.InputMediaPhoto(
-                    id=raw.types.InputPhoto(
-                        id=uploaded_photo.photo.id,
-                        access_hash=uploaded_photo.photo.access_hash,
-                        file_reference=uploaded_photo.photo.file_reference,
-                    ),
-                    live_photo=True,
-                    spoiler=self.has_spoiler,
-                    video=raw.types.InputDocument(
-                        id=uploaded_media.document.id,
-                        access_hash=uploaded_media.document.access_hash,
-                        file_reference=uploaded_media.document.file_reference,
-                    )
-                )
+            )
+        else:
+            uploaded_photo = utils.get_input_media_from_file_id(
+                self.photo,
+                FileType.PHOTO,
+                has_spoiler=self.has_spoiler,
+            )
+
+        media = raw.types.InputMediaPhoto(
+            id=raw.types.InputPhoto(
+                id=uploaded_photo.photo.id,
+                access_hash=uploaded_photo.photo.access_hash,
+                file_reference=uploaded_photo.photo.file_reference,
+            ),
+            live_photo=True,
+            spoiler=self.has_spoiler,
+            video=raw.types.InputDocument(
+                id=uploaded_media.document.id,
+                access_hash=uploaded_media.document.access_hash,
+                file_reference=uploaded_media.document.file_reference,
+            )
+        )
+        
         return media, self.show_caption_above_media
