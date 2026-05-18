@@ -48,6 +48,12 @@ class InputVenueMessageContent(InputMessageContent):
         foursquare_type (``str``, *optional*):
             Foursquare type of the venue, if known. (For example, “arts_entertainment/default”, “arts_entertainment/aquarium” or “food/icecream”.)
 
+        google_place_id (``str``, *optional*):
+            Google Places identifier of the venue.
+
+        google_place_type (``str``, *optional*):
+            Google Places type of the venue. (See `supported types <https://developers.google.com/places/web-service/supported_types>`__.)
+
     """
 
     def __init__(
@@ -73,6 +79,24 @@ class InputVenueMessageContent(InputMessageContent):
         self.google_place_type = google_place_type
 
     async def write(self, client: "pyrogram.Client", reply_markup):
+        provider = ""
+        venue_id = ""
+        venue_type = ""
+        if (
+            self.google_place_id != "" and
+            self.google_place_type != ""
+        ):
+            provider = "gplaces"
+            venue_id = self.google_place_id
+            venue_type = self.google_place_type
+        if (
+            self.foursquare_id != "" and
+            self.foursquare_type != ""
+        ):
+            provider = "foursquare"
+            venue_id = self.foursquare_id
+            venue_type = self.foursquare_type
+
         return raw.types.InputBotInlineMessageMediaVenue(
             geo_point=raw.types.InputGeoPoint(
                 lat=self.latitude,
@@ -80,8 +104,8 @@ class InputVenueMessageContent(InputMessageContent):
             ),
             title=self.title,
             address=self.address,
-            provider="", # TODO
-            venue_id=self.foursquare_id,
-            venue_type=self.foursquare_type,
+            provider=provider,
+            venue_id=venue_id,
+            venue_type=venue_type,
             reply_markup=await reply_markup.write(client) if reply_markup else None
         )
