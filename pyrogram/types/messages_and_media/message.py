@@ -3781,7 +3781,8 @@ class Message(Object, Update):
         quote: bool = None,
         foursquare_id: str = "",
         foursquare_type: str = "",
-        # TODO
+        google_place_id: str = "",
+        google_place_type: str = "",
         disable_notification: bool = None,
         message_effect_id: int = None,
         reply_parameters: "types.ReplyParameters" = None,
@@ -3841,18 +3842,15 @@ class Message(Object, Update):
                 Foursquare type of the venue, if known.
                 (For example, "arts_entertainment/default", "arts_entertainment/aquarium" or "food/icecream".)
 
+            google_place_id (``str``, *optional*):
+                Google Places identifier of the venue.
+
+            google_place_type (``str``, *optional*):
+                Google Places type of the venue. (See `supported types <https://developers.google.com/places/web-service/supported_types>`__.)
+
             disable_notification (``bool``, *optional*):
                 Sends the message silently.
                 Users will receive a notification with no sound.
-
-            schedule_date (:py:obj:`~datetime.datetime`, *optional*):
-                Date when the message will be automatically sent. The date must be within 367 days in the future.
-
-            protect_content (``bool``, *optional*):
-                Pass True if the content of the message must be protected from forwarding and saving; for bots only.
-
-            allow_paid_broadcast (``bool``, *optional*):
-                Pass True to allow the message to ignore regular broadcast limits for a small fee; for bots only
 
             message_effect_id (``int`` ``64-bit``, *optional*):
                 Unique identifier of the message effect to be added to the message; for private chats only.
@@ -3866,6 +3864,15 @@ class Message(Object, Update):
                 Use the :meth:`~pyrogram.Client.get_send_as_chats` to return the list of message sender identifiers, which can be used to send messages in the chat, 
                 This setting applies to the current message and will remain effective for future messages unless explicitly changed.
                 To set this behavior permanently for all messages, use :meth:`~pyrogram.Client.set_send_as_chat`.
+
+            schedule_date (:py:obj:`~datetime.datetime`, *optional*):
+                Date when the message will be automatically sent. The date must be within 367 days in the future.
+
+            protect_content (``bool``, *optional*):
+                Pass True if the content of the message must be protected from forwarding and saving; for bots only.
+
+            allow_paid_broadcast (``bool``, *optional*):
+                Pass True to allow the message to ignore regular broadcast limits for a small fee; for bots only
 
             reply_markup (:obj:`~pyrogram.types.InlineKeyboardMarkup` | :obj:`~pyrogram.types.ReplyKeyboardMarkup` | :obj:`~pyrogram.types.ReplyKeyboardRemove` | :obj:`~pyrogram.types.ForceReply`, *optional*):
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
@@ -3896,6 +3903,8 @@ class Message(Object, Update):
             address=address,
             foursquare_id=foursquare_id,
             foursquare_type=foursquare_type,
+            google_place_id=google_place_id,
+            google_place_type=google_place_type,
             disable_notification=disable_notification,
             message_effect_id=message_effect_id,
             reply_parameters=reply_parameters,
