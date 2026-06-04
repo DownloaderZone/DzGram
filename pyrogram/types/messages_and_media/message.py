@@ -3378,30 +3378,16 @@ class Message(Object, Update):
         shuffle_options: bool = None,
         allow_adding_options: bool = None,
         hide_results_until_closes: bool = None,
+        members_only: bool = None,
+        country_codes: list[str] = None,
         correct_option_ids: list[int] = None,
         explanation: "types.FormattedText" = None,
-        explanation_media: Optional[Union[
-            "types.InputMediaAnimation",
-            "types.InputMediaDocument",
-            "types.InputMediaAudio",
-            "types.InputMediaPhoto",
-            "types.InputMediaSticker",
-            "types.InputMediaVideo",
-            "types.Location",
-        ]] = None,
+        explanation_media: Optional["types.InputPollMedia"] = None,
         open_period: int = None,
         close_date: datetime = None,
         is_closed: bool = None,
         description: "types.FormattedText" = None,
-        description_media: Optional[Union[
-            "types.InputMediaAnimation",
-            "types.InputMediaDocument",
-            "types.InputMediaAudio",
-            "types.InputMediaPhoto",
-            "types.InputMediaSticker",
-            "types.InputMediaVideo",
-            "types.Location",
-        ]] = None,
+        media: Optional["types.InputPollMedia"] = None,
         disable_notification: bool = None,
         protect_content: bool = None,
         allow_paid_broadcast: bool = None,
@@ -3486,6 +3472,12 @@ class Message(Object, Update):
             hide_results_until_closes (``bool``, *optional*):
                 Pass True, if poll results must be shown only after the poll closes.
 
+            members_only (``bool``, *optional*):
+                Pass True, if voting is limited to users who have been members of the chat where the poll is being sent for more than 24 hours; for channel chats only.
+
+            country_codes (List of ``str``, *optional*):
+                List of 0-12 two-letter ISO 3166-1 alpha-2 country codes indicating the countries from which users can vote in the poll; for channel chats only. Use "FT" as a country code to allow users with anonymous numbers to vote. If omitted or empty, then users from any country can participate in the poll.
+
             correct_option_ids (List of ``int``, *optional*):
                 List of monotonically increasing 0-based identifiers of the correct answer options, required for polls in quiz mode.
 
@@ -3493,7 +3485,7 @@ class Message(Object, Update):
                 Text that is shown when a user chooses an incorrect answer or taps on the lamp icon in a quiz-style
                 poll, 0-200 characters with at most 2 line feeds after entities parsing.
 
-            explanation_media (:obj:`~pyrogram.types.InputMediaAnimation` | :obj:`~pyrogram.types.InputMediaDocument` | :obj:`~pyrogram.types.InputMediaAudio` | :obj:`~pyrogram.types.InputMediaPhoto` | :obj:`~pyrogram.types.InputMediaSticker` | :obj:`~pyrogram.types.InputMediaVideo` | :obj:`~pyrogram.types.Location`, *optional*):
+            explanation_media (:obj:`~pyrogram.types.InputPollMedia`, *optional*):
                 Media attached to the poll explanation that is shown when a user chooses an incorrect answer or taps on the lamp icon in a quiz-style poll.
 
             open_period (``int``, *optional*):
@@ -3512,8 +3504,8 @@ class Message(Object, Update):
             description (:obj:`~pyrogram.types.FormattedText`, *optional*):
                 Description of the poll to be sent, 0-1024 characters after entities parsing.
 
-            description_media (:obj:`~pyrogram.types.InputMediaAnimation` | :obj:`~pyrogram.types.InputMediaDocument` | :obj:`~pyrogram.types.InputMediaAudio` | :obj:`~pyrogram.types.InputMediaPhoto` | :obj:`~pyrogram.types.InputMediaSticker` | :obj:`~pyrogram.types.InputMediaVideo` | :obj:`~pyrogram.types.Location`, *optional*):
-                Media attached to the poll.
+            media (:obj:`~pyrogram.types.InputPollMedia`, *optional*):
+                Media added to the poll description.
 
             disable_notification (``bool``, *optional*):
                 Sends the message silently.
@@ -3591,6 +3583,8 @@ class Message(Object, Update):
             shuffle_options=shuffle_options,
             allow_adding_options=allow_adding_options,
             hide_results_until_closes=hide_results_until_closes,
+            members_only=members_only,
+            country_codes=country_codes,
             correct_option_ids=correct_option_ids,
             explanation=explanation,
             open_period=open_period,
@@ -3608,7 +3602,7 @@ class Message(Object, Update):
             schedule_date=schedule_date,
             message_effect_id=message_effect_id,
             reply_markup=reply_markup,
-            description_media=description_media,
+            media=media,
             explanation_media=explanation_media,
         )
 
