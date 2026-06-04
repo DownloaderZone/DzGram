@@ -173,7 +173,7 @@ class SendVenue:
         if any([
             foursquare_id,
             foursquare_type,
-        ])::
+        ]):
             provider = "foursquare"
             venue_id = foursquare_id
             venue_type = foursquare_type

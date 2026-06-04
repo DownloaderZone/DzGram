@@ -22,7 +22,7 @@ import re
 from typing import Callable, Optional, Union
 
 import pyrogram
-from pyrogram import enums raw, types, utils
+from pyrogram import enums, raw, types, utils
 from pyrogram.file_id import FileType
 
 from .input_media import InputMedia
@@ -71,7 +71,7 @@ class InputMediaLivePhoto(InputMedia):
         thumb: Optional[str] = None,
         caption: str = "",
         parse_mode: Optional["enums.ParseMode"] = None,
-        caption_entities: Optional[list[types.MessageEntity]] = None,
+        caption_entities: Optional[list["types.MessageEntity"]] = None,
         show_caption_above_media: Optional[bool] = None,
         has_spoiler: Optional[bool] = None,
 

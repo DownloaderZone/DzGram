@@ -17,7 +17,7 @@
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
 import io
-from typing import Optional, Union, Callable
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 from ..messages_and_media import MessageEntity
 from ..object import Object
@@ -42,7 +42,7 @@ class InputMedia(Object):
         media: Union[str, "io.BytesIO"],
         caption: Optional[str] = "",
         parse_mode: Optional["enums.ParseMode"] = None,
-        caption_entities: Optional[list[MessageEntity]] = None,
+        caption_entities: Optional[list["MessageEntity"]] = None,
     ):
         super().__init__()
 

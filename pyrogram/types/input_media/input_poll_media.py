@@ -17,7 +17,7 @@
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
 import io
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 from ..object import Object
 
@@ -46,7 +46,7 @@ class InputPollMedia(Object):
         media: Optional[Union[str, "io.BytesIO"]] = None,
         caption: str = "",
         parse_mode: Optional[str] = None,
-        caption_entities: Optional[list[types.MessageEntity]] = None,
+        caption_entities: Optional[list["types.MessageEntity"]] = None,
     ):
         super().__init__()
 
