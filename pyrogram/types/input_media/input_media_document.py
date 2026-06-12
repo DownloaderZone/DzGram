@@ -118,7 +118,7 @@ class InputMediaDocument(InputMedia):
                     business_connection_id=None,  # TODO
                     peer=await client.resolve_peer(chat_id or "me"),
                     media=raw.types.InputMediaUploadedDocument(
-                        mime_type=(None if is_bytes_io else self.guess_mime_type(self.media)) or "application/zip",
+                        mime_type=(None if is_bytes_io else client.guess_mime_type(self.media)) or "application/zip",
                         thumb=await client.save_file(self.thumb),
                         file=await client.save_file(self.media),
                         attributes=filename_attribute,
