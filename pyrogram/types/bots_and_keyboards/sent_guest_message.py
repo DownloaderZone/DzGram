@@ -1,5 +1,5 @@
 #  Pyrogram - Telegram MTProto API Client Library for Python
-#  Copyright (C) 2017-present Dan <https://github.com/delivrance>
+#  Copyright (C) 2017-present <https://github.com/KurimuzonAkuma>
 #
 #  This file is part of Pyrogram.
 #
@@ -16,36 +16,33 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
-from pyrogram import raw
+from pyrogram import raw, utils
+
 from ..object import Object
 
 
-class Restriction(Object):
-    """A restriction applied to bots or chats.
+class SentGuestMessage(Object):
+    """Describes an inline message sent by a guest bot.
 
     Parameters:
-        platform (``str``):
-            The platform the restriction is applied to, e.g. "ios", "android"
-
-        reason (``str``):
-            The restriction reason, e.g. "porn", "copyright".
-
-        text (``str``):
-            The restriction text.
+        inline_message_id (``str``):
+            Identifier of the sent inline message.
 
     """
 
-    def __init__(self, *, platform: str, reason: str, text: str):
-        super().__init__(None)
+    def __init__(
+        self,
+        *,
+        inline_message_id: str,
+    ):
+        super().__init__()
 
-        self.platform = platform
-        self.reason = reason
-        self.text = text
+        self.inline_message_id = inline_message_id
 
     @staticmethod
-    def _parse(restriction: "raw.types.RestrictionReason") -> "Restriction":
-        return Restriction(
-            platform=restriction.platform,
-            reason=restriction.reason,
-            text=restriction.text
+    async def _parse(
+        inline_message_id: "raw.base.InputBotInlineMessageID",
+    ) -> "SentGuestMessage":
+        return SentGuestMessage(
+            inline_message_id=utils.pack_inline_message_id(inline_message_id)
         )
