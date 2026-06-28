@@ -306,6 +306,7 @@ INVITE_SLUG_INVALID	The specified invitation slug is invalid.
 INVOICE_INVALID	The specified invoice is invalid.
 INVOICE_PAYLOAD_INVALID	The specified invoice payload is invalid.
 JOIN_AS_PEER_INVALID	The specified peer cannot be used to join a group call.
+JOIN_GUARD_TIMEOUT	A timeout occurred while fetching data from the guard bot.
 LANGUAGE_INVALID	The specified lang_code is invalid.
 LANG_CODE_INVALID	The specified language code is invalid.
 LANG_CODE_NOT_SUPPORTED	The specified language code is not supported.
@@ -488,6 +489,7 @@ RESULT_ID_EMPTY	Result ID empty.
 RESULT_ID_INVALID	One of the specified result IDs is invalid.
 RESULT_TYPE_INVALID	Result type invalid.
 REVOTE_NOT_ALLOWED	You cannot change your vote.
+RICH_MESSAGE_DOCUMENT_INVALID	One of the rich message document is invalid.
 RIGHTS_NOT_MODIFIED	The new admin rights are equal to the old rights, no change was made.
 RINGTONE_INVALID	The specified ringtone is invalid.
 RINGTONE_MIME_INVALID	The MIME type for the ringtone is invalid.
