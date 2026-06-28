@@ -5369,6 +5369,8 @@ class Message(Object, Update):
                     allows_multiple_answers=self.poll.allows_multiple_answers,
                     allows_revoting=self.poll.allows_revoting,
                     correct_option_ids=self.poll.correct_option_ids,
+                    members_only=self.poll.members_only,
+                    country_codes=self.poll.country_codes,
                     explanation=self.poll.explanation,
                     open_period=self.poll.open_period,
                     description=self.poll.description,
