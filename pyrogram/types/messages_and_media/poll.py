@@ -111,7 +111,7 @@ class Poll(Object, Update):
         allows_multiple_answers: bool,
         allows_revoting: bool,
         members_only: Optional[bool] = None,
-        country_codes: Optional[List[str]] = None,
+        country_codes: Optional[list[str]] = None,
         chosen_option_ids: Optional[list[int]] = None,
         correct_option_ids: Optional[list[int]] = None,
         explanation: Optional["types.FormattedText"] = None,
