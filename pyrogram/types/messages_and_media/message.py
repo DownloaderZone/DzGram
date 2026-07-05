@@ -4578,7 +4578,7 @@ class Message(Object, Update):
             self.chat.type,
             self.direct_messages_topic.topic_id if self.direct_messages_topic else None,
             quote,
-            reply_to_message_id,
+            None,
         )
 
         return await self._client.send_invoice(
