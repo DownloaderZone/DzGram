@@ -13,8 +13,12 @@
         Releases
     </a>
     •
-    <a href="https://DzGram.t.me/">
-        News
+    <a href="https://t.me/DZGramByDzone">
+        Channel
+    </a>
+    •
+    <a href="https://t.me/DzgramDiscussion">
+        Support
     </a>
 </p>
 
@@ -60,4 +64,5 @@ pip3 install dzgram
 
 - Check out [the docs](https://github.com/DownloaderZone/DzGram) to learn more about DzGram, get started right
 away and discover more in-depth material for building your client applications.
-- Join the official channel at [DzGram](https://DzGram.t.me/) and stay tuned for news, updates and announcements.
+- Join the official [channel](https://t.me/DZGramByDzone) and stay tuned for news, updates and announcements.
+- Get help and discuss in the [support group](https://t.me/DzgramDiscussion).

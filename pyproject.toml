@@ -43,7 +43,8 @@ path = "pyrogram/__init__.py"
 [project.urls]
 Homepage = "https://github.com/DownloaderZone/DzGram"
 Tracker = "https://github.com/DownloaderZone/DzGram/issues"
-community = "https://DzGram.t.me/"
+community = "https://t.me/DZGramByDzone"
+Support = "https://t.me/DzgramDiscussion"
 Source = "https://github.com/DownloaderZone/DzGram"
 Documentation = "https://github.com/DownloaderZone/DzGram"
 

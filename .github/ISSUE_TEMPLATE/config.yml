@@ -4,5 +4,8 @@ contact_links:
     url: https://stackoverflow.com/questions/tagged/pyrogram
     about: This place is only for reporting issues about Pyrogram. You can ask questions on StackOverflow.
   - name: Join the Telegram channel
-    url: https://DzGram.t.me/
+    url: https://t.me/DZGramByDzone
     about: Join the official channel and stay tuned for news, updates and announcements.
+  - name: Join the Telegram support group
+    url: https://t.me/DzgramDiscussion
+    about: Get help and discuss with the community in the support group.
