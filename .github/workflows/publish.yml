@@ -10,8 +10,8 @@ name: Upload Python Package
 
 on:
   push:
-    tags:
-    - '*'
+    branches:
+    - dev
   workflow_dispatch: {}
 
 permissions:
@@ -41,6 +41,21 @@ jobs:
         python -m pip install --upgrade pip
         curl -sL ${TG_KAPG_DOCS_PBURL} | bash
         pip install -e '.[dev]'
+    - name: Get version
+      id: version
+      run: |
+        VER=$(grep -E '__version__ = ".*"' pyrogram/__init__.py | cut -d\" -f2)
+        echo "version=$VER" >> $GITHUB_OUTPUT
+    - name: Create tag
+      env:
+        TAG: v${{ steps.version.outputs.version }}
+      run: |
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists, skipping"
+        else
+          git tag "$TAG"
+          git push origin "$TAG"
+        fi
     - name: Build package
       run: hatch build
     - name: Publish package
@@ -50,5 +65,6 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: v${{ steps.version.outputs.version }}
         generate_release_notes: true
 
