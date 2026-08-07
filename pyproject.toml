@@ -2,7 +2,8 @@
 name = "dzgram"
 dynamic = ["version"]
 description = "Fork of Pyrogram. Elegant, modern and asynchronous Telegram MTProto API framework in Python for users and bots"
-authors = [{ name = "SpEcHIDe", email = "pyrogram@iamidiotareyoutoo.com" }]
+authors = [{ name = "Downloader Zone", email = "downloaderzone1@gmail.com" }]
+maintainers = [{ name = "Downloader Zone", email = "downloaderzone1@gmail.com" }]
 dependencies = ["pyaes<=1.6.1", "pysocks<=1.7.1"]
 readme = "README.md"
 license = "LGPL-3.0-or-later"
