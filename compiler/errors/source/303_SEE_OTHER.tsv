@@ -1,0 +1,6 @@
+id	message
+FILE_MIGRATE_X	The file to be accessed is currently stored in DC{value}
+NETWORK_MIGRATE_X	Your IP address is associated to DC {value}, please re-send the query to that DC.
+PHONE_MIGRATE_X	Your phone number is associated to DC {value}, please re-send the query to that DC.
+STATS_MIGRATE_X	Channel statistics for the specified channel are stored on DC {value}, please re-send the query to that DC.
+USER_MIGRATE_X	Your account is associated to DC {value}, please re-send the query to that DC.
