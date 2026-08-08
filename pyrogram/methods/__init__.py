@@ -32,6 +32,7 @@ from .stories import Stories
 from .users import Users
 from .utilities import Utilities
 from .business import TelegramBusiness
+from .pyromod import Pyromod
 
 
 class Methods(
@@ -51,5 +52,6 @@ class Methods(
     TelegramBusiness,
     Users,
     Utilities,
+    Pyromod,
 ):
     pass

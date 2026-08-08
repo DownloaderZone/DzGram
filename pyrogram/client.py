@@ -373,6 +373,7 @@ class Client(Methods):
         self.updates_watchdog_task = None
         self.updates_watchdog_event = asyncio.Event()
         self.last_update_time = datetime.now()
+        self.listeners = {listener_type: [] for listener_type in pyrogram.enums.ListenerTypes}
 
         self.loop = utils.get_event_loop()
 

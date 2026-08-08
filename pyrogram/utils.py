@@ -27,12 +27,22 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime, timezone
 from getpass import getpass
 from io import BytesIO
+from types import SimpleNamespace
 from typing import Union, Optional
 
 import pyrogram
 from pyrogram import raw, enums
 from pyrogram import types
 from pyrogram.file_id import FileId, FileType, PHOTO_TYPES, DOCUMENT_TYPES
+
+
+PyromodConfig = SimpleNamespace(
+    timeout_handler=None,
+    stopped_handler=None,
+    throw_exceptions=True,
+    unallowed_click_alert=True,
+    unallowed_click_alert_text=("[pyromod] You're not expected to click this button."),
+)
 
 
 def get_event_loop() -> asyncio.AbstractEventLoop:

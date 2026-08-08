@@ -35,6 +35,7 @@ from pyrogram.handlers import (
     PreCheckoutQueryHandler,
     PurchasedPaidMediaHandler,
     PollHandler,
+    ConversationHandler,
 
 
     ChatMemberUpdatedHandler,
@@ -102,6 +103,9 @@ class Dispatcher:
 
         self.updates_queue = asyncio.Queue()
         self.groups = OrderedDict()
+
+        self.conversation_handler = ConversationHandler()
+        self.groups[0] = [self.conversation_handler]
 
         async def message_parser(update, users, chats):
             business_connection_id = getattr(update, "connection_id", None)

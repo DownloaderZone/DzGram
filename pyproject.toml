@@ -102,6 +102,6 @@ docs = [
 ]
 
 fast = [
-    "PyTgCrypto>1.2.9.2,<=1.4",
+    "dzgram-tgcrypto>1.2.12",
     "uvloop>0.18.0,<=0.19.0"
 ]
