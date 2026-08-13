@@ -29,28 +29,39 @@ try:
     def _bytes(data):
         return bytes(data) if isinstance(data, bytearray) else data
 
+    def _bytearray(data):
+        return bytearray(data) if isinstance(data, bytes) else data
+
     def ige256_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-        return warpcrypto.ige256_encrypt(_bytes(data), key, iv)
+        return warpcrypto.ige256_encrypt(_bytes(data), _bytes(key), _bytes(iv))
 
 
     def ige256_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-        return warpcrypto.ige256_decrypt(_bytes(data), key, iv)
+        return warpcrypto.ige256_decrypt(_bytes(data), _bytes(key), _bytes(iv))
 
 
     def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-        return warpcrypto.ctr256_encrypt(_bytes(data), key, iv, state or bytearray(1))
+        return warpcrypto.ctr256_encrypt(
+            _bytes(data), _bytes(key), _bytearray(iv), _bytearray(state or bytearray(1))
+        )
 
 
     def ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-        return warpcrypto.ctr256_decrypt(_bytes(data), key, iv, state or bytearray(1))
+        return warpcrypto.ctr256_decrypt(
+            _bytes(data), _bytes(key), _bytearray(iv), _bytearray(state or bytearray(1))
+        )
 
 
     def ctr256_encrypt_inplace(data: bytearray, key: bytes, iv: bytearray, state: bytearray = None) -> bytearray:
-        return warpcrypto.ctr256_encrypt_inplace(data, key, iv, state or bytearray(1))
+        return warpcrypto.ctr256_encrypt_inplace(
+            _bytearray(data), _bytes(key), _bytearray(iv), _bytearray(state or bytearray(1))
+        )
 
 
     def ctr256_decrypt_inplace(data: bytearray, key: bytes, iv: bytearray, state: bytearray = None) -> bytearray:
-        return warpcrypto.ctr256_decrypt_inplace(data, key, iv, state or bytearray(1))
+        return warpcrypto.ctr256_decrypt_inplace(
+            _bytearray(data), _bytes(key), _bytearray(iv), _bytearray(state or bytearray(1))
+        )
 
 
     def ctr256_encrypt_batch(
@@ -60,7 +71,9 @@ try:
         ivs: bytearray,
         states: bytearray,
     ) -> bytes:
-        return warpcrypto.ctr256_encrypt_batch(data_flat, sizes, key, ivs, states)
+        return warpcrypto.ctr256_encrypt_batch(
+            _bytes(data_flat), _bytearray(sizes), _bytes(key), _bytearray(ivs), _bytearray(states)
+        )
 
 
     def ctr256_decrypt_batch(
@@ -70,7 +83,9 @@ try:
         ivs: bytearray,
         states: bytearray,
     ) -> bytes:
-        return warpcrypto.ctr256_decrypt_batch(data_flat, sizes, key, ivs, states)
+        return warpcrypto.ctr256_decrypt_batch(
+            _bytes(data_flat), _bytearray(sizes), _bytes(key), _bytearray(ivs), _bytearray(states)
+        )
 
 
     def xor(a: bytes, b: bytes) -> bytes:
