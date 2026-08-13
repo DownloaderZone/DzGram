@@ -30,7 +30,7 @@ jobs:
           python sort.py sort
 
     - name: Open Pull Request
-      uses: peter-evans/create-pull-request@v4
+      uses: peter-evans/create-pull-request@v6
       with:
         commit-message: >
           Update unknown_errors
