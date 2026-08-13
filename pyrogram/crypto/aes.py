@@ -26,20 +26,23 @@ try:
     log.info("Using WarpCrypto")
 
 
+    def _bytes(data):
+        return bytes(data) if isinstance(data, bytearray) else data
+
     def ige256_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-        return warpcrypto.ige256_encrypt(data, key, iv)
+        return warpcrypto.ige256_encrypt(_bytes(data), key, iv)
 
 
     def ige256_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-        return warpcrypto.ige256_decrypt(data, key, iv)
+        return warpcrypto.ige256_decrypt(_bytes(data), key, iv)
 
 
     def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-        return warpcrypto.ctr256_encrypt(data, key, iv, state or bytearray(1))
+        return warpcrypto.ctr256_encrypt(_bytes(data), key, iv, state or bytearray(1))
 
 
     def ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-        return warpcrypto.ctr256_decrypt(data, key, iv, state or bytearray(1))
+        return warpcrypto.ctr256_decrypt(_bytes(data), key, iv, state or bytearray(1))
 
 
     def ctr256_encrypt_inplace(data: bytearray, key: bytes, iv: bytearray, state: bytearray = None) -> bytearray:
