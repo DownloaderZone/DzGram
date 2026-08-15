@@ -184,7 +184,7 @@ def generate_raw():
 
     def pkg_page(module, title, members=None, extra=""):
         if members is not None:
-            listing = ".. automodule:: " + module + "\n    :members: " + ", ".join(members) + "\n\n"
+            listing = ".. automodule:: " + module + "\n    :no-index:\n    :members: " + ", ".join(members) + "\n\n"
             return header(title) + listing + extra
         return (
             header(title)
