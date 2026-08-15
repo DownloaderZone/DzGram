@@ -5,6 +5,9 @@ main.py
 unknown_errors.txt
 .DS_Store
 
+# Docs build output
+docs/build/
+
 # Pyrogram generated code
 pyrogram/errors/exceptions/
 pyrogram/raw/functions/
