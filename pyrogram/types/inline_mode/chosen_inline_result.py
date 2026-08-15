@@ -26,7 +26,7 @@ from ..update import Update
 
 
 class ChosenInlineResult(Object, Update):
-    """A :doc:`result <InlineQueryResult>` of an inline query chosen by the user and sent to their chat partner.
+    """A :obj:`~pyrogram.types.InlineQueryResult` of an inline query chosen by the user and sent to their chat partner.
 
     .. note::
 
@@ -48,8 +48,8 @@ class ChosenInlineResult(Object, Update):
 
         inline_message_id (``str``, *optional*):
             Identifier of the sent inline message.
-            Available only if there is an :doc:`inline keyboard <InlineKeyboardMarkup>` attached to the message.
-            Will be also received in :doc:`callback queries <CallbackQuery>` and can be used to edit the message.
+            Available only if there is an :obj:`~pyrogram.types.InlineKeyboardMarkup` attached to the message.
+            Will be also received in :obj:`~pyrogram.types.CallbackQuery` and can be used to edit the message.
 
         matches (List of regex Matches, *optional*):
             A list containing all `Match Objects <https://docs.python.org/3/library/re.html#match-objects>`_ that match

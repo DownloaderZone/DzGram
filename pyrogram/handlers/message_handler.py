@@ -71,6 +71,7 @@ class MessageHandler(Handler):
         :param message: The Message object to check with.
         :return: A tuple of whether the message has a matching listener and its filters does match with the Message
         and the matching listener;
+
         """
         chat = message.chat
         chat_id = chat.id if chat else None

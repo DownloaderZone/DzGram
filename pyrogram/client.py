@@ -205,7 +205,7 @@ class Client(Methods):
         storage_engine (:obj:`~pyrogram.storage.Storage`, *optional*):
             Pass an instance of your own implementation of session storage engine.
             Useful when you want to store your session in databases like Mongo, Redis, etc.
-            :doc:`Storage Engines <../../topics/storage-engines>`
+            :doc:`Storage Engines </topics/storage-engines>`
 
         no_joined_notifications (``bool``, *optional*):
             Pass True to disable notification about the current user joining Telegram for other users that added them to contact list.
@@ -221,7 +221,7 @@ class Client(Methods):
 
         fetch_replies (``int``, *optional*):
             Set the number of replies to be fetched when parsing the :obj:`~pyrogram.types.Message` object. Defaults to 1.
-            :doc:`More on Errors <../../api/errors/index>`
+            :doc:`More on Errors </api/errors/index>`
 
     """
 

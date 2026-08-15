@@ -1,0 +1,58 @@
+Chats
+=====
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+
+    add-chat-members
+    add-profile-audio
+    archive-chats
+    ban-chat-member
+    create-channel
+    create-group
+    create-supergroup
+    delete-channel
+    delete-chat-photo
+    delete-supergroup
+    delete-user-history
+    get-chat
+    get-chat-audios
+    get-chat-audios-count
+    get-chat-event-log
+    get-chat-member
+    get-chat-members
+    get-chat-members-count
+    get-chat-online-count
+    get-created-chats
+    get-dialogs
+    get-dialogs-count
+    get-direct-messages-topics
+    get-direct-messages-topics-by-id
+    get-nearby-chats
+    get-send-as-chats
+    join-chat
+    leave-chat
+    mark-chat-unread
+    pin-chat-message
+    promote-chat-member
+    remove-profile-audio
+    restrict-chat-member
+    search-chats
+    set-administrator-title
+    set-chat-description
+    set-chat-direct-messages-group
+    set-chat-message-auto-delete-time
+    set-chat-permissions
+    set-chat-photo
+    set-chat-protected-content
+    set-chat-title
+    set-chat-username
+    set-profile-audio-position
+    set-send-as-chat
+    set-slow-mode
+    transfer-chat-ownership
+    unarchive-chats
+    unban-chat-member
+    unpin-all-chat-messages
+    unpin-chat-message

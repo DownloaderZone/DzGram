@@ -32,7 +32,7 @@ class AddHandler:
         You can register multiple handlers, but at most one handler within a group will be used for a single update.
         To handle the same update more than once, register your handler using a different group id (lower group id
         == higher priority). This mechanism is explained in greater details at
-        :doc:`More on Updates <../../topics/more-on-updates>`.
+        :doc:`More on Updates </topics/more-on-updates>`.
 
         Parameters:
             handler (``Handler``):
