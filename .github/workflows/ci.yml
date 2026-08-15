@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: ["dev"]
-  pull_request:
-    branches: ["dev"]
+  workflow_run:
+    workflows: ["Upload Python Package"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -33,7 +32,6 @@ jobs:
           rm -rf build/html/.doctrees
 
       - name: Generate GitHub App Token
-        if: github.event_name == 'push'
         id: generate-token
         uses: actions/create-github-app-token@v1
         with:
@@ -42,7 +40,6 @@ jobs:
           owner: DownloaderZone
 
       - name: Deploy to GitHub Pages
-        if: github.event_name == 'push'
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ steps.generate-token.outputs.token }}
