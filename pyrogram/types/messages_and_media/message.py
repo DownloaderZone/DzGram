@@ -168,6 +168,9 @@ class Message(Object, Update):
         effect_id (``str``, *optional*):
             Unique identifier of the message effect added to the message. Use :meth:`~pyrogram.Client.get_message_effects` to get the list of available message effect ids.
 
+        rich_message (:obj:`~pyrogram.types.RichMessage`, *optional*):
+            The rich formatted message content.
+
         animation (:obj:`~pyrogram.types.Animation`, *optional*):
             Message is an animation, information about the animation.
 
@@ -518,6 +521,7 @@ class Message(Object, Update):
         entities: list["types.MessageEntity"] = None,
         link_preview_options: "types.LinkPreviewOptions" = None,
         effect_id: str = None,
+        rich_message: Optional["types.RichMessage"] = None,
         animation: "types.Animation" = None,
         audio: "types.Audio" = None,
         document: "types.Document" = None,
@@ -697,6 +701,7 @@ class Message(Object, Update):
         self.reactions = reactions
         self.link_preview_options = link_preview_options
         self.effect_id = effect_id
+        self.rich_message = rich_message
         self.external_reply = external_reply
         self.is_topic_message = is_topic_message
         self.is_automatic_forward = is_automatic_forward
@@ -1524,6 +1529,7 @@ class Message(Object, Update):
                 client=client,
                 link_preview_options=link_preview_options,
                 effect_id=getattr(message, "effect", None),
+                rich_message=await types.RichMessage._parse(client, message.rich_message, users, chats),
                 show_caption_above_media=show_caption_above_media,
                 paid_media=paid_media,
                 paid_star_count=message.paid_message_stars

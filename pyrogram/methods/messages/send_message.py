@@ -34,6 +34,8 @@ class SendMessage:
         text: str = None,
         parse_mode: Optional["enums.ParseMode"] = None,
         entities: list["types.MessageEntity"] = None,
+        rich_text: Optional[str] = None,
+        rich_text_parse_mode: Optional["enums.ParseMode"] = None,
         link_preview_options: "types.LinkPreviewOptions" = None,
         disable_notification: bool = None,
         protect_content: bool = None,
@@ -73,6 +75,13 @@ class SendMessage:
 
             entities (List of :obj:`~pyrogram.types.MessageEntity`):
                 List of special entities that appear in message text, which can be specified instead of *parse_mode*.
+
+            rich_text (``str``, *optional*):
+                Rich text (Markdown or HTML) to render a styled message.
+                See `rich message formatting options <https://core.telegram.org/bots/api#rich-message-formatting-options>`__ for details.
+
+            rich_text_parse_mode (:obj:`~pyrogram.enums.ParseMode`, *optional*):
+                Parse mode for ``rich_text``. Defaults to Markdown.
 
             link_preview_options (:obj:`~pyrogram.types.LinkPreviewOptions`, *optional*):
                 Link preview generation options for the message
@@ -209,7 +218,43 @@ class SendMessage:
 
         peer = await self.resolve_peer(chat_id)
 
-        if (
+        if rich_text is not None:
+            if rich_text_parse_mode == enums.ParseMode.HTML:
+                rich_message = raw.types.InputRichMessageHTML(
+                    html=rich_text,
+                )
+            else:
+                rich_message = raw.types.InputRichMessageMarkdown(
+                    markdown=rich_text,
+                )
+
+            rpc = raw.functions.messages.SendMessage(
+                peer=peer,
+                silent=disable_notification or None,
+                no_webpage=disable_web_page_preview if disable_web_page_preview is not None else None,
+                reply_to=reply_to,
+                random_id=self.rnd_id(),
+                schedule_date=utils.datetime_to_timestamp(schedule_date),
+                reply_markup=await reply_markup.write(self) if reply_markup else None,
+                message="",
+                rich_message=rich_message,
+                noforwards=protect_content,
+                allow_paid_floodskip=allow_paid_broadcast,
+                allow_paid_stars=paid_message_star_count,
+                effect=message_effect_id,
+                send_as=await self.resolve_peer(send_as) if send_as else None,
+            )
+            if business_connection_id:
+                r = await session.invoke(
+                    raw.functions.InvokeWithBusinessConnection(
+                        query=rpc,
+                        connection_id=business_connection_id
+                    )
+                )
+            else:
+                r = await self.invoke(rpc)
+
+        elif (
             link_preview_options and
             link_preview_options.url
         ):
