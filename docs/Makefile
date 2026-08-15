@@ -19,7 +19,7 @@ api:
 	python generate_api.py
 
 html: api
-	@$(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	@$(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" -j auto $(SPHINXOPTS) $(O)
 
 .PHONY: html
 

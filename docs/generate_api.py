@@ -162,16 +162,37 @@ def generate_handlers():
     write(base / "index.rst", toctree_page("Handlers", pages))
 
 
+def get_imported_names(source: pathlib.Path):
+    """Return the class names imported by `from .<module> import <name>` lines."""
+    names = []
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    for n in tree.body:
+        if isinstance(n, ast.ImportFrom) and n.level == 1 and n.module:
+            for alias in n.names:
+                if not alias.asname:
+                    names.append(alias.name)
+    return names
+
+
+def chunked(lst, size):
+    for i in range(0, len(lst), size):
+        yield lst[i : i + size]
+
+
 def generate_raw():
     base = SRC / "api" / "raw"
 
-    def pkg_page(module, title):
+    def pkg_page(module, title, members=None, extra=""):
+        if members is not None:
+            listing = ".. automodule:: " + module + "\n    :members: " + ", ".join(members) + "\n\n"
+            return header(title) + listing + extra
         return (
             header(title)
             + f".. automodule:: {module}\n    :members:\n    :undoc-members:\n    :imported-members:\n\n"
+            + extra
         )
 
-    def gen(kind, title):
+    def gen(kind, title, chunk):
         root = PKG / "raw" / kind
         out = base / kind
         pages = []
@@ -181,11 +202,21 @@ def generate_raw():
                 out / f"{cat.name}.rst",
                 pkg_page(f"pyrogram.raw.{kind}.{cat.name}", f"{title}: {cat.name}"),
             )
-        write(out / "index.rst", pkg_page(f"pyrogram.raw.{kind}", f"{title}") + ".. toctree::\n    :maxdepth: 1\n    :hidden:\n\n" + "".join(f"    {c}\n" for c in pages))
+        init = root / "__init__.py"
+        if init.exists():
+            names = [n for n in get_imported_names(init)]
+            for i, part in enumerate(chunked(names, chunk)):
+                pages.append(f"index-part-{i}")
+                write(
+                    out / f"index-part-{i}.rst",
+                    pkg_page(f"pyrogram.raw.{kind}", f"{title} (part {i + 1})", members=part),
+                )
+        toctree = ".. toctree::\n    :maxdepth: 1\n    :hidden:\n\n" + "".join(f"    {c}\n" for c in pages)
+        write(out / "index.rst", header(title) + toctree)
 
-    gen("types", "Raw Types")
-    gen("functions", "Raw Functions")
-    gen("base", "Raw Base")
+    gen("types", "Raw Types", chunk=120)
+    gen("functions", "Raw Functions", chunk=120)
+    gen("base", "Raw Base", chunk=120)
 
     write(
         base / "index.rst",
