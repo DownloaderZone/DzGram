@@ -1,47 +1,53 @@
-name: Build DOCs
+name: CI
+
 on:
   push:
-    tags:
-    - '*'
-  workflow_dispatch: {}
+    branches: ["dev"]
+  pull_request:
+    branches: ["dev"]
+  workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   build:
-    name: build-doc
+    name: build-docs
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 1
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
 
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
-    - name: Install dependencies AND Build Documentation
-      run: |
+      - name: Install dependencies AND Build Documentation
+        run: |
           python -m pip install --upgrade pip
           pip install -e ".[docs]"
           cd docs
           make html
           rm -rf build/html/.doctrees
-          cd ..
 
-    - name: Generate GitHub App Token
-      id: generate-token
-      uses: actions/create-github-app-token@v1
-      with:
-        app-id: ${{ secrets.ORG_APP_ID }}
-        private-key: ${{ secrets.ORG_APP_PRIVATE_KEY }}
-        owner: DownloaderZone
+      - name: Generate GitHub App Token
+        if: github.event_name == 'push'
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.ORG_APP_ID }}
+          private-key: ${{ secrets.ORG_APP_PRIVATE_KEY }}
+          owner: DownloaderZone
 
-    - uses: peaceiris/actions-gh-pages@v4
-      with:
-        personal_token: ${{ steps.generate-token.outputs.token }}
-        external_repository: DownloaderZone/DzGram
-        publish_dir: ./docs/build/html
-        publish_branch: gh-pages
-        user_name: 'github-actions[bot]'
-        user_email: 'github-actions[bot]@users.noreply.github.com'
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ steps.generate-token.outputs.token }}
+          external_repository: DownloaderZone/DzGram
+          publish_dir: ./docs/build/html
+          publish_branch: gh-pages
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
