@@ -58,6 +58,8 @@ from .send_message import SendMessage
 from .send_paid_media import SendPaidMedia
 from .send_photo import SendPhoto
 from .send_poll import SendPoll
+from .send_rich_message import SendRichMessage
+from .send_rich_message_draft import SendRichMessageDraft
 from .add_paid_message_reaction import AddPaidMessageReaction
 from .set_reaction import SetReaction
 from .send_sticker import SendSticker
@@ -125,6 +127,8 @@ class Messages(
     SendPaidMedia,
     SendPhoto,
     SendPoll,
+    SendRichMessage,
+    SendRichMessageDraft,
     SendScreenshotNotification,
     SendSticker,
     SendVenue,

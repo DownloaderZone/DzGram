@@ -93,12 +93,10 @@ dev = [
 ]
 
 docs = [
-    "Sphinx<=7.2.6",
-    "furo<=2023.9.10",
-    "sphinx-autobuild<=2021.3.14",
-    "sphinx-copybutton<=0.5.2",
-    "pygments<=2.17.2",
-    "sphinx-llms-txt==0.7.1"
+    "sphinx>=7.0",
+    "furo>=2024.0.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-design>=0.5.0",
 ]
 
 fast = [

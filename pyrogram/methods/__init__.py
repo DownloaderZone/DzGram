@@ -23,6 +23,7 @@ from .chats import Chats
 from .chat_topics import ChatTopics
 from .contacts import Contacts
 from .decorators import Decorators
+from .ephemeral import Ephemeral
 from .invite_links import InviteLinks
 from .messages import Messages
 from .password import Password
@@ -43,6 +44,7 @@ class Methods(
     Chats,
     ChatTopics,
     Contacts,
+    Ephemeral,
     InviteLinks,
     Messages,
     Password,

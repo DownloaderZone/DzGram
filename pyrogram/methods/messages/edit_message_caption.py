@@ -31,6 +31,8 @@ class EditMessageCaption:
         caption: str,
         parse_mode: Optional["enums.ParseMode"] = None,
         caption_entities: list["types.MessageEntity"] = None,
+        rich_text: Optional[str] = None,
+        rich_text_parse_mode: Optional["enums.ParseMode"] = None,
         show_caption_above_media: bool = None,
         reply_markup: "types.InlineKeyboardMarkup" = None,
         schedule_date: datetime = None,
@@ -58,6 +60,13 @@ class EditMessageCaption:
 
             caption_entities (List of :obj:`~pyrogram.types.MessageEntity`):
                 List of special entities that appear in the caption, which can be specified instead of *parse_mode*.
+
+            rich_text (``str``, *optional*):
+                Rich text (Markdown or HTML) to render a styled caption.
+                See `rich message formatting options <https://core.telegram.org/bots/api#rich-message-formatting-options>`__ for details.
+
+            rich_text_parse_mode (:obj:`~pyrogram.enums.ParseMode`, *optional*):
+                Parse mode for ``rich_text``. Defaults to Markdown.
 
             show_caption_above_media (``bool``, *optional*):
                 Pass True, if the caption must be shown above the message media. Supported only for animation, photo and video messages.
@@ -91,6 +100,8 @@ class EditMessageCaption:
             text=caption,
             parse_mode=parse_mode,
             entities=caption_entities,
+            rich_text=rich_text,
+            rich_text_parse_mode=rich_text_parse_mode,
             reply_markup=reply_markup,
             link_preview_options=link_preview_options,
             schedule_date=schedule_date,

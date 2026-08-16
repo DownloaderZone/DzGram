@@ -100,9 +100,9 @@ class CallbackQueryHandler(Handler):
 
         :param client: The Client object to check with.
         :param query: The CallbackQuery object to check with.
-        :return: A tuple of a boolean and a Listener object. The boolean indicates whether
-        the found listener has filters and its filters matches with the CallbackQuery object.
-        The Listener object is the matching listener.
+
+        :return: A tuple containing whether the listener matches and the matching Listener object.
+
         """
         data = self.compose_data_identifier(query)
 
@@ -132,8 +132,9 @@ class CallbackQueryHandler(Handler):
 
         :param client: The Client object to check with.
         :param query: The CallbackQuery object to check with.
-        :return: A boolean indicating whether the CallbackQuery object has a matching listener or the handler
-        filter matches.
+
+        :return: Whether the CallbackQuery object has a matching listener or the handler filter matches.
+
         """
         listener_does_match, listener = await self.check_if_has_matching_listener(
             client, query

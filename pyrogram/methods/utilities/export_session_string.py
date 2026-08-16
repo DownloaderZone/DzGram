@@ -27,7 +27,7 @@ class ExportSessionString:
 
         Session strings are useful for storing in-memory authorized sessions in a portable, serialized string.
         More detailed information about session strings can be found at the dedicated page of
-        :doc:`Storage Engines <../../topics/storage-engines>`.
+        :doc:`Storage Engines </topics/storage-engines>`.
 
         Returns:
             ``str``: The session serialized into a printable, url-safe string.

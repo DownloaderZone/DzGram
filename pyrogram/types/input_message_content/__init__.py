@@ -28,6 +28,35 @@ from .reply_parameters import ReplyParameters
 from .external_reply_info import ExternalReplyInfo
 from .text_quote import TextQuote
 from .input_poll_option import InputPollOption
+from .input_rich_block import (
+    InputRichBlock,
+    InputRichBlockAnchor,
+    InputRichBlockAnimation,
+    InputRichBlockAudio,
+    InputRichBlockBlockQuotation,
+    InputRichBlockCollage,
+    InputRichBlockDetails,
+    InputRichBlockDivider,
+    InputRichBlockFooter,
+    InputRichBlockList,
+    InputRichBlockListItem,
+    InputRichBlockMap,
+    InputRichBlockMathematicalExpression,
+    InputRichBlockParagraph,
+    InputRichBlockPhoto,
+    InputRichBlockPreformatted,
+    InputRichBlockPullQuotation,
+    InputRichBlockSectionHeading,
+    InputRichBlockSlideshow,
+    InputRichBlockTableCell,
+    InputRichBlockTable,
+    InputRichBlockThinking,
+    InputRichBlockVideo,
+    InputRichBlockVoiceNote,
+)
+from .input_rich_message import InputRichMessage
+from .input_rich_message_content import InputRichMessageContent
+from .input_rich_message_media import InputRichMessageMedia
 
 __all__ = [
     "ExternalReplyInfo",
@@ -42,4 +71,31 @@ __all__ = [
     "TextQuote",
     "InputChecklist",
     "InputChecklistTask",
+    "InputRichBlock",
+    "InputRichBlockAnchor",
+    "InputRichBlockAnimation",
+    "InputRichBlockAudio",
+    "InputRichBlockBlockQuotation",
+    "InputRichBlockCollage",
+    "InputRichBlockDetails",
+    "InputRichBlockDivider",
+    "InputRichBlockFooter",
+    "InputRichBlockList",
+    "InputRichBlockListItem",
+    "InputRichBlockMap",
+    "InputRichBlockMathematicalExpression",
+    "InputRichBlockParagraph",
+    "InputRichBlockPhoto",
+    "InputRichBlockPreformatted",
+    "InputRichBlockPullQuotation",
+    "InputRichBlockSectionHeading",
+    "InputRichBlockSlideshow",
+    "InputRichBlockTableCell",
+    "InputRichBlockTable",
+    "InputRichBlockThinking",
+    "InputRichBlockVideo",
+    "InputRichBlockVoiceNote",
+    "InputRichMessage",
+    "InputRichMessageContent",
+    "InputRichMessageMedia",
 ]

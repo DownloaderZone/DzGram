@@ -36,6 +36,8 @@ class EditMessageText:
         text: str,
         parse_mode: Optional["enums.ParseMode"] = None,
         entities: list["types.MessageEntity"] = None,
+        rich_text: Optional[str] = None,
+        rich_text_parse_mode: Optional["enums.ParseMode"] = None,
         link_preview_options: "types.LinkPreviewOptions" = None,
         reply_markup: "types.InlineKeyboardMarkup" = None,
         schedule_date: datetime = None,
@@ -64,6 +66,13 @@ class EditMessageText:
 
             entities (List of :obj:`~pyrogram.types.MessageEntity`):
                 List of special entities that appear in message text, which can be specified instead of *parse_mode*.
+
+            rich_text (``str``, *optional*):
+                Rich text (Markdown or HTML) to render a styled message.
+                See `rich message formatting options <https://core.telegram.org/bots/api#rich-message-formatting-options>`__ for details.
+
+            rich_text_parse_mode (:obj:`~pyrogram.enums.ParseMode`, *optional*):
+                Parse mode for ``rich_text``. Defaults to Markdown.
 
             link_preview_options (:obj:`~pyrogram.types.LinkPreviewOptions`, *optional*):
                 Link preview generation options for the message. Ignored if the specified URL does not have a valid preview.
@@ -121,6 +130,15 @@ class EditMessageText:
                 optional=True
             )
 
+        if rich_text is not None:
+            if rich_text_parse_mode == enums.ParseMode.HTML:
+                rich_msg = raw.types.InputRichMessageHTML(html=rich_text)
+            else:
+                rich_msg = raw.types.InputRichMessageMarkdown(markdown=rich_text)
+            text_params = {"message": "", "rich_message": rich_msg}
+        else:
+            text_params = await utils.parse_text_entities(self, text, parse_mode, entities)
+
         rpc = raw.functions.messages.EditMessage(
             peer=await self.resolve_peer(chat_id),
             id=message_id,
@@ -129,7 +147,7 @@ class EditMessageText:
             media=media,
             reply_markup=await reply_markup.write(self) if reply_markup else None,
             schedule_date=utils.datetime_to_timestamp(schedule_date),
-            **await utils.parse_text_entities(self, text, parse_mode, entities)
+            **text_params
         )
         session = None
         business_connection = None

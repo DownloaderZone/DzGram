@@ -46,7 +46,7 @@ class DeleteMessages:
 
         .. include:: /_includes/usable-by/users-bots.rst
 
-        Please be aware about using the correct :doc:`Message Identifiers <../../topics/message-identifiers>`, specifically when using the ``is_scheduled`` parameter.
+        Please be aware about using the correct :doc:`Message Identifiers </topics/message-identifiers>`, specifically when using the ``is_scheduled`` parameter.
 
         Parameters:
             chat_id (``int`` | ``str``):

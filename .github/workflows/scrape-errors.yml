@@ -1,8 +1,9 @@
 name: Scrape Errors
 on:
   workflow_dispatch: {} # Allow manually kicking off builds
-  schedule:
-    - cron:  '0 12 * * *' # Every day at 12:00 (noon). Ref https://crontab.guru/examples.html
+permissions:
+  contents: write
+  pull-requests: write
 jobs:
   build:
     name: scrape-errors
@@ -27,7 +28,7 @@ jobs:
           python sort.py sort
 
     - name: Open Pull Request
-      uses: peter-evans/create-pull-request@v4
+      uses: peter-evans/create-pull-request@v6
       with:
         commit-message: >
           Update unknown_errors
