@@ -194,6 +194,18 @@ class Client(Methods):
             A value that is too high may result in network related issues.
             Defaults to 1.
 
+        download_workers (``int``, *optional*):
+            Set the number of concurrent chunk requests used to download a single file.
+            Each worker downloads one 1 MiB chunk at a time, significantly reducing
+            download time on high-latency connections.
+            Defaults to 8.
+
+        upload_workers (``int``, *optional*):
+            Set the number of concurrent workers per media connection used to upload
+            a single file (only for files bigger than 10 MiB, as smaller files are
+            uploaded sequentially).
+            Defaults to 4.
+
         max_message_cache_size (``int``, *optional*):
             Set the maximum size of the message cache.
             Defaults to 10000.
@@ -245,6 +257,8 @@ class Client(Methods):
     UPDATES_WATCHDOG_INTERVAL = 15 * 60
 
     MAX_CONCURRENT_TRANSMISSIONS = 1
+    DOWNLOAD_WORKERS = 8
+    UPLOAD_WORKERS = 4
     MAX_CACHE_SIZE = 10000
 
     mimetypes = MimeTypes()
@@ -280,6 +294,8 @@ class Client(Methods):
         sleep_threshold: int = Session.SLEEP_THRESHOLD,
         hide_password: bool = False,
         max_concurrent_transmissions: int = MAX_CONCURRENT_TRANSMISSIONS,
+        download_workers: int = DOWNLOAD_WORKERS,
+        upload_workers: int = UPLOAD_WORKERS,
         max_message_cache_size: int = MAX_CACHE_SIZE,
         max_business_user_connection_cache_size: int = MAX_CACHE_SIZE,
         storage_engine: Storage = None,
@@ -319,6 +335,8 @@ class Client(Methods):
         self.sleep_threshold = sleep_threshold
         self.hide_password = hide_password
         self.max_concurrent_transmissions = max_concurrent_transmissions
+        self.download_workers = max(1, download_workers)
+        self.upload_workers = max(1, upload_workers)
         self.max_message_cache_size = max_message_cache_size
         self.max_business_user_connection_cache_size = max_business_user_connection_cache_size
         self.no_joined_notifications = no_joined_notifications
@@ -1201,39 +1219,79 @@ class Client(Methods):
                 )
 
                 if isinstance(r, raw.types.upload.File):
-                    while True:
-                        chunk = r.bytes
+                    if file_size:
+                        total = min(total, -(-file_size // chunk_size))
 
-                        yield chunk
+                    worker_count = min(self.download_workers, max(1, total))
+                    pending = {}
+                    next_chunk = 0
+                    current = 0
 
-                        current += 1
-                        offset_bytes += chunk_size
-
-                        if progress:
-                            func = functools.partial(
-                                progress,
-                                min(offset_bytes, file_size)
-                                if file_size != 0
-                                else offset_bytes,
-                                file_size,
-                                *progress_args
-                            )
-
-                            if inspect.iscoroutinefunction(progress):
-                                await func()
-                            else:
-                                await self.loop.run_in_executor(self.executor, func)
-
-                        if len(chunk) < chunk_size or current >= total:
-                            break
-
-                        r = await session.invoke(
+                    async def fetch(offset):
+                        res = await session.invoke(
                             raw.functions.upload.GetFile(
                                 location=location,
-                                offset=offset_bytes,
+                                offset=offset,
                                 limit=chunk_size
-                            )
+                            ),
+                            sleep_threshold=self.sleep_threshold
                         )
+
+                        if isinstance(res, raw.types.upload.File):
+                            return res.bytes
+
+                        return b""
+
+                    # The first chunk has already been fetched.
+                    chunk = r.bytes
+                    next_chunk = 1
+
+                    while len(pending) < worker_count and next_chunk < total:
+                        pending[next_chunk] = self.loop.create_task(
+                            fetch(offset_bytes + next_chunk * chunk_size)
+                        )
+                        next_chunk += 1
+
+                    try:
+                        while True:
+                            yield chunk
+
+                            current += 1
+                            offset_bytes += chunk_size
+
+                            if progress:
+                                func = functools.partial(
+                                    progress,
+                                    min(offset_bytes, file_size)
+                                    if file_size != 0
+                                    else offset_bytes,
+                                    file_size,
+                                    *progress_args
+                                )
+
+                                if inspect.iscoroutinefunction(progress):
+                                    await func()
+                                else:
+                                    await self.loop.run_in_executor(self.executor, func)
+
+                            if len(chunk) < chunk_size or current >= total:
+                                break
+
+                            if pending:
+                                chunk = await pending.pop(min(pending))
+                            else:
+                                chunk = await fetch(offset_bytes)
+
+                            while len(pending) < worker_count and next_chunk < total:
+                                pending[next_chunk] = self.loop.create_task(
+                                    fetch(offset_bytes + next_chunk * chunk_size)
+                                )
+                                next_chunk += 1
+                    finally:
+                        for task in pending.values():
+                            task.cancel()
+
+                        await asyncio.gather(*pending.values(), return_exceptions=True)
 
                 elif isinstance(r, raw.types.upload.FileCdnRedirect):
                     cdn_session = Session(

@@ -106,7 +106,8 @@ class SaveFile:
                 try:
                     await session.invoke(data)
                 except Exception as e:
-                    log.error(e)
+                    errors.append(e)
+                    return
 
         part_size = 512 * 1024
 
@@ -137,10 +138,11 @@ class SaveFile:
         file_total_parts = int(math.ceil(file_size / part_size))
         is_big = file_size > 10 * 1024 * 1024
         pool_size = 3 if is_big else 1
-        workers_count = 4 if is_big else 1
+        workers_count = self.upload_workers if is_big else 1
         is_missing_part = file_id is not None
         file_id = file_id or self.rnd_id()
         md5_sum = md5() if not is_big and not is_missing_part else None
+        errors = []
         pool = [
             Session(
                 self, await self.storage.dc_id(), await self.storage.auth_key(),
@@ -157,6 +159,9 @@ class SaveFile:
             fp.seek(part_size * file_part)
 
             while True:
+                if errors:
+                    raise errors[0]
+
                 chunk = fp.read(part_size)
 
                 if not chunk:
@@ -178,7 +183,18 @@ class SaveFile:
                         bytes=chunk
                     )
 
-                await queue.put(rpc)
+                # Detect worker failures even if the queue is full, so the
+                # producer doesn't get stuck waiting for dead workers.
+                while True:
+                    if errors:
+                        raise errors[0]
+
+                    try:
+                        await asyncio.wait_for(queue.put(rpc), 1)
+                    except asyncio.TimeoutError:
+                        continue
+
+                    break
 
                 if is_missing_part:
                     return
@@ -205,6 +221,9 @@ class SaveFile:
         except Exception as e:
             log.error(e, exc_info=True)
         else:
+            if errors:
+                raise errors[0]
+
             if is_big:
                 return raw.types.InputFileBig(
                     id=file_id,
@@ -220,10 +239,14 @@ class SaveFile:
                     md5_checksum=md5_sum
                 )
         finally:
-            for _ in workers:
-                await queue.put(None)
+            if errors:
+                for worker in workers:
+                    worker.cancel()
+            else:
+                for _ in workers:
+                    await queue.put(None)
 
-            await asyncio.gather(*workers)
+            await asyncio.gather(*workers, return_exceptions=True)
 
             for session in pool:
                 await session.stop()
