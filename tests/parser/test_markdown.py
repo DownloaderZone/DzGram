@@ -191,19 +191,20 @@ __italic__, __italic__
 ![22:45 tomorrow](tg://time?unix=1647531900&format=r)
 ![22:45 tomorrow](tg://time?unix=1647531900)
 `inline fixed-width code`
-```
-pre-formatted fixed-width code block```
+
+```pre-formatted fixed-width code block```
+
 ```python
 pre-formatted fixed-width code block written in the Python programming language```
 >Block quotation started
 >Block quotation continued
 >The last line of the block quotation
 **>Expandable block quotation started
-**>Expandable block quotation continued
-**>Expandable block quotation continued
-**>Hidden by default part of the block quotation started
-**>Expandable block quotation continued
-**>The last line of the block quotation"""
+>Expandable block quotation continued
+>Expandable block quotation continued
+>Hidden by default part of the block quotation started
+>Expandable block quotation continued
+>The last line of the block quotation||"""
 
     text = """bold, bold
 italic, italic
@@ -249,16 +250,16 @@ The last line of the block quotation"""
         pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.SPOILER, offset=151, length=33),
         pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.UNDERLINE, offset=185, length=21),
         pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.TEXT_LINK, offset=212, length=10, url="http://www.example.com/"),
-        # TODO
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=251, length=14, unix_time=1647531900, date_time_format="wDT"),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=266, length=14, unix_time=1647531900, date_time_format="t"),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=281, length=14, unix_time=1647531900, date_time_format="r"),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=296, length=14, unix_time=1647531900, date_time_format=""),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.CODE, offset=311, length=23),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.PRE, offset=335, length=37, language=""),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.PRE, offset=373, length=80, language="python"),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.BLOCKQUOTE, offset=454, length=86),
-        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.EXPANDABLE_BLOCKQUOTE, offset=541, length=236),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.CUSTOM_EMOJI, offset=223, length=1, custom_emoji_id=5368324170671202286),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=226, length=14, unix_time=1647531900, date_time_format="wDT"),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=241, length=14, unix_time=1647531900, date_time_format="t"),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=256, length=14, unix_time=1647531900, date_time_format="r"),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.DATE_TIME, offset=271, length=14, unix_time=1647531900, date_time_format=""),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.CODE, offset=286, length=23),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.PRE, offset=311, length=36, language=""),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.PRE, offset=349, length=79, language="python"),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.BLOCKQUOTE, offset=429, length=86),
+        pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.EXPANDABLE_BLOCKQUOTE, offset=516, length=236),
     ])
 
     assert Markdown.unparse(text=text, entities=entities) == expected

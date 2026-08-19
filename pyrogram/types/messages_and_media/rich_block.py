@@ -16,10 +16,11 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
+from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
 import pyrogram
-from pyrogram import raw, types
+from pyrogram import raw, types, utils
 
 from ..object import Object
 
@@ -97,6 +98,17 @@ class RichBlock(Object):
     - :obj:`~pyrogram.types.RichBlockVideo`
     - :obj:`~pyrogram.types.RichBlockVoiceNote`
     - :obj:`~pyrogram.types.RichBlockThinking`
+    - :obj:`~pyrogram.types.RichBlockTitle`
+    - :obj:`~pyrogram.types.RichBlockSubtitle`
+    - :obj:`~pyrogram.types.RichBlockAuthorDate`
+    - :obj:`~pyrogram.types.RichBlockHeader`
+    - :obj:`~pyrogram.types.RichBlockSubheader`
+    - :obj:`~pyrogram.types.RichBlockKicker`
+    - :obj:`~pyrogram.types.RichBlockRelatedArticles`
+    - :obj:`~pyrogram.types.RichBlockCover`
+    - :obj:`~pyrogram.types.RichBlockEmbedded`
+    - :obj:`~pyrogram.types.RichBlockEmbeddedPost`
+    - :obj:`~pyrogram.types.RichBlockChatLink`
     - :obj:`~pyrogram.types.RichBlockUnsupported`
     """
 
@@ -305,18 +317,97 @@ class RichBlock(Object):
         if isinstance(rich_block, raw.types.PageBlockThinking):
             return RichBlockThinking(text=await types.RichText._parse(client, rich_block.text))
 
-        # if isinstance(rich_block, raw.types.PageBlockAuthorDate):
-        # if isinstance(rich_block, raw.types.PageBlockChannel):
-        # if isinstance(rich_block, raw.types.PageBlockCover):
-        # if isinstance(rich_block, raw.types.PageBlockEmbed):
-        # if isinstance(rich_block, raw.types.PageBlockEmbedPost):
-        # if isinstance(rich_block, raw.types.PageBlockHeader):
-        # if isinstance(rich_block, raw.types.PageBlockKicker):
-        # if isinstance(rich_block, raw.types.PageBlockRelatedArticles):
-        # if isinstance(rich_block, raw.types.PageBlockSubheader):
-        # if isinstance(rich_block, raw.types.PageBlockSubtitle):
-        # if isinstance(rich_block, raw.types.PageBlockTitle):
-        # if isinstance(rich_block, raw.types.PageBlockUnsupported):
+        if isinstance(rich_block, raw.types.PageBlockTitle):
+            return RichBlockTitle(text=await types.RichText._parse(client, rich_block.text))
+
+        if isinstance(rich_block, raw.types.PageBlockSubtitle):
+            return RichBlockSubtitle(text=await types.RichText._parse(client, rich_block.text))
+
+        if isinstance(rich_block, raw.types.PageBlockAuthorDate):
+            return RichBlockAuthorDate(
+                author=await types.RichText._parse(client, rich_block.author),
+                date=utils.timestamp_to_datetime(rich_block.published_date),
+            )
+
+        if isinstance(rich_block, raw.types.PageBlockHeader):
+            return RichBlockHeader(text=await types.RichText._parse(client, rich_block.text))
+
+        if isinstance(rich_block, raw.types.PageBlockSubheader):
+            return RichBlockSubheader(text=await types.RichText._parse(client, rich_block.text))
+
+        if isinstance(rich_block, raw.types.PageBlockKicker):
+            return RichBlockKicker(text=await types.RichText._parse(client, rich_block.text))
+
+        if isinstance(rich_block, raw.types.PageBlockRelatedArticles):
+            return RichBlockRelatedArticles(
+                header=await types.RichText._parse(client, rich_block.title),
+                articles=types.List(
+                    [
+                        RichBlockRelatedArticle(
+                            url=article.url,
+                            title=article.title,
+                            description=article.description,
+                            photo=types.Photo._parse(client, photos.get(article.photo_id)),
+                            author=article.author,
+                            publish_date=utils.timestamp_to_datetime(article.published_date),
+                        )
+                        for article in rich_block.articles
+                    ]
+                ),
+            )
+
+        if isinstance(rich_block, raw.types.PageBlockCover):
+            return RichBlockCover(
+                cover=await RichBlock._parse(client, rich_block.cover, photos, documents, part, users, chats)
+            )
+
+        if isinstance(rich_block, raw.types.PageBlockEmbed):
+            poster_photo = photos.get(rich_block.poster_photo_id)
+
+            return RichBlockEmbedded(
+                url=rich_block.url,
+                html=rich_block.html,
+                poster_photo=types.Photo._parse(client, poster_photo),
+                width=rich_block.w,
+                height=rich_block.h,
+                caption=await types.RichBlockCaption._parse(client, rich_block.caption),
+                is_full_width=rich_block.full_width,
+                allow_scrolling=rich_block.allow_scrolling,
+            )
+
+        if isinstance(rich_block, raw.types.PageBlockEmbedPost):
+            author_photo = photos.get(rich_block.author_photo_id)
+
+            return RichBlockEmbeddedPost(
+                url=rich_block.url,
+                author=rich_block.author,
+                author_photo=types.Photo._parse(client, author_photo),
+                date=utils.timestamp_to_datetime(rich_block.date),
+                blocks=types.List(
+                    [
+                        await types.RichBlock._parse(
+                            client, block, photos, documents, part, users, chats
+                        )
+                        for block in rich_block.blocks
+                    ]
+                ),
+                caption=await types.RichBlockCaption._parse(client, rich_block.caption),
+            )
+
+        if isinstance(rich_block, raw.types.PageBlockChannel):
+            raw_chat = rich_block.channel
+
+            if isinstance(raw_chat, raw.types.Channel):
+                chat = types.Chat._parse_channel_chat(client, raw_chat)
+            else:
+                chat = types.Chat._parse_chat_chat(client, raw_chat)
+
+            return RichBlockChatLink(
+                title=chat.title,
+                photo=chat.photo,
+                accent_color_id=getattr(getattr(chat.accent_color, "color", None), "value", None),
+                username=chat.username,
+            )
 
         return RichBlockUnsupported()
 
@@ -1000,4 +1091,326 @@ class RichBlockThinking(RichBlock):
         super().__init__()
 
         self.text = text
+
+
+class RichBlockTitle(RichBlock):
+    """A title, corresponding to the HTML tag ``<title>``.
+    The title can be on the top of the page and may be followed by :obj:`~pyrogram.types.RichBlockSubtitle`,
+    :obj:`~pyrogram.types.RichBlockAuthorDate` and :obj:`~pyrogram.types.RichBlockKicker` blocks.
+
+    Parameters:
+        text (:obj:`~pyrogram.types.RichText`):
+            Text of the block.
+    """
+
+    def __init__(
+        self,
+        text: "types.RichText",
+    ):
+        super().__init__()
+
+        self.text = text
+
+
+class RichBlockSubtitle(RichBlock):
+    """A subtitle, corresponding to the HTML tag ``<h2>``.
+    The subtitle is below the title, may be followed by :obj:`~pyrogram.types.RichBlockAuthorDate` and
+    :obj:`~pyrogram.types.RichBlockKicker` blocks.
+
+    Parameters:
+        text (:obj:`~pyrogram.types.RichText`):
+            Text of the block.
+    """
+
+    def __init__(
+        self,
+        text: "types.RichText",
+    ):
+        super().__init__()
+
+        self.text = text
+
+
+class RichBlockAuthorDate(RichBlock):
+    """The author and publishing date of a page, corresponding to the HTML tag ``<address>``.
+    The block may be on the top of the page.
+
+    Parameters:
+        author (:obj:`~pyrogram.types.RichText`):
+            Author of the page.
+
+        date (:py:obj:`datetime.datetime`):
+            Point in time when the page was published.
+    """
+
+    def __init__(
+        self,
+        author: "types.RichText",
+        date: datetime,
+    ):
+        super().__init__()
+
+        self.author = author
+        self.date = date
+
+
+class RichBlockHeader(RichBlock):
+    """A header, corresponding to the HTML tag ``<header>``.
+
+    Parameters:
+        text (:obj:`~pyrogram.types.RichText`):
+            Text of the block.
+    """
+
+    def __init__(
+        self,
+        text: "types.RichText",
+    ):
+        super().__init__()
+
+        self.text = text
+
+
+class RichBlockSubheader(RichBlock):
+    """A subheader, corresponding to the HTML tag ``<h3>``.
+
+    Parameters:
+        text (:obj:`~pyrogram.types.RichText`):
+            Text of the block.
+    """
+
+    def __init__(
+        self,
+        text: "types.RichText",
+    ):
+        super().__init__()
+
+        self.text = text
+
+
+class RichBlockKicker(RichBlock):
+    """A kicker, corresponding to the HTML tag ``<kicker>``.
+    The kicker is on the top of the page and may be followed by :obj:`~pyrogram.types.RichBlockTitle`,
+    :obj:`~pyrogram.types.RichBlockSubtitle`, :obj:`~pyrogram.types.RichBlockAuthorDate` and
+    :obj:`~pyrogram.types.RichBlockHeader` blocks.
+
+    Parameters:
+        text (:obj:`~pyrogram.types.RichText`):
+            Text of the block.
+    """
+
+    def __init__(
+        self,
+        text: "types.RichText",
+    ):
+        super().__init__()
+
+        self.text = text
+
+
+class RichBlockRelatedArticles(RichBlock):
+    """Related articles, corresponding to the HTML tag ``<related>``.
+
+    Parameters:
+        header (:obj:`~pyrogram.types.RichText`):
+            Block header.
+
+        articles (List of :obj:`~pyrogram.types.RichBlockRelatedArticle`):
+            List of related articles.
+    """
+
+    def __init__(
+        self,
+        header: "types.RichText",
+        articles: List["RichBlockRelatedArticle"],
+    ):
+        super().__init__()
+
+        self.header = header
+        self.articles = articles
+
+
+class RichBlockRelatedArticle(RichBlock):
+    """Contains information about a related article.
+
+    Parameters:
+        url (``str``):
+            Related article URL.
+
+        title (``str``, *optional*):
+            Article title.
+
+        description (``str``, *optional*):
+            Article description.
+
+        photo (:obj:`~pyrogram.types.Photo`, *optional*):
+            Article photo.
+
+        author (``str``, *optional*):
+            Article author.
+
+        publish_date (:py:obj:`datetime.datetime`, *optional*):
+            Point in time when the article was published.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        photo: Optional["types.Photo"] = None,
+        author: Optional[str] = None,
+        publish_date: Optional[datetime] = None,
+    ):
+        super().__init__()
+
+        self.url = url
+        self.title = title
+        self.description = description
+        self.photo = photo
+        self.author = author
+        self.publish_date = publish_date
+
+
+class RichBlockCover(RichBlock):
+    """A page cover, corresponding to the HTML tag ``<cover>``.
+
+    Parameters:
+        cover (:obj:`~pyrogram.types.RichBlock`):
+            The cover.
+    """
+
+    def __init__(
+        self,
+        cover: "types.RichBlock",
+    ):
+        super().__init__()
+
+        self.cover = cover
+
+
+class RichBlockEmbedded(RichBlock):
+    """An embedded web page, corresponding to the HTML tag ``<embed>``.
+
+    Parameters:
+        url (``str``, *optional*):
+            URL of the embedded page, if available.
+
+        html (``str``, *optional*):
+            HTML-markup of the embedded page.
+
+        poster_photo (:obj:`~pyrogram.types.Photo`, *optional*):
+            Poster photo, if available.
+
+        width (``int``, *optional*):
+            Block width, 0 if unknown.
+
+        height (``int``, *optional*):
+            Block height, 0 if unknown.
+
+        caption (:obj:`~pyrogram.types.RichBlockCaption`, *optional*):
+            Block caption.
+
+        is_full_width (``bool``, *optional*):
+            True, if the block must be full width.
+
+        allow_scrolling (``bool``, *optional*):
+            True, if scrolling needs to be allowed.
+    """
+
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        html: Optional[str] = None,
+        poster_photo: Optional["types.Photo"] = None,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        caption: Optional["RichBlockCaption"] = None,
+        is_full_width: Optional[bool] = None,
+        allow_scrolling: Optional[bool] = None,
+    ):
+        super().__init__()
+
+        self.url = url
+        self.html = html
+        self.poster_photo = poster_photo
+        self.width = width
+        self.height = height
+        self.caption = caption
+        self.is_full_width = is_full_width
+        self.allow_scrolling = allow_scrolling
+
+
+class RichBlockEmbeddedPost(RichBlock):
+    """An embedded post, corresponding to the HTML tag ``<embed-post>``.
+
+    Parameters:
+        url (``str``):
+            URL of the embedded post.
+
+        author (``str``):
+            Post author.
+
+        author_photo (:obj:`~pyrogram.types.Photo`, *optional*):
+            Post author photo.
+
+        date (:py:obj:`datetime.datetime`):
+            Point in time when the post was created.
+
+        blocks (List of :obj:`~pyrogram.types.RichBlock`):
+            Post content.
+
+        caption (:obj:`~pyrogram.types.RichBlockCaption`, *optional*):
+            Post caption.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        author: str,
+        date: datetime,
+        blocks: List["types.RichBlock"],
+        author_photo: Optional["types.Photo"] = None,
+        caption: Optional["RichBlockCaption"] = None,
+    ):
+        super().__init__()
+
+        self.url = url
+        self.author = author
+        self.author_photo = author_photo
+        self.date = date
+        self.blocks = blocks
+        self.caption = caption
+
+
+class RichBlockChatLink(RichBlock):
+    """A link to a chat, corresponding to the HTML tag ``<chatlink>``.
+
+    Parameters:
+        title (``str``):
+            Chat title.
+
+        photo (:obj:`~pyrogram.types.ChatPhoto`, *optional*):
+            Chat photo.
+
+        accent_color_id (``int``, *optional*):
+            Identifier of the accent color for chat title and background of chat photo.
+
+        username (``str``, *optional*):
+            Chat username by which all other information about the chat can be resolved.
+    """
+
+    def __init__(
+        self,
+        title: str,
+        photo: Optional["types.ChatPhoto"] = None,
+        accent_color_id: Optional[int] = None,
+        username: Optional[str] = None,
+    ):
+        super().__init__()
+
+        self.title = title
+        self.photo = photo
+        self.accent_color_id = accent_color_id
+        self.username = username
 
