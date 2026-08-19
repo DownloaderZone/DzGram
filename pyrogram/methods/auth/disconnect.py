@@ -35,6 +35,13 @@ class Disconnect:
         if self.is_initialized:
             raise ConnectionError("Can't disconnect an initialized client")
 
+        for pool in self.media_session_pools.values():
+            for session in pool:
+                await session.stop()
+
+        self.media_session_pools.clear()
+        self.media_sessions.clear()
+
         await self.session.stop()
         await self.storage.close()
         self.is_connected = False
