@@ -37,3 +37,4 @@ from .purchased_paid_media_handler import PurchasedPaidMediaHandler
 from .shipping_query_handler import ShippingQueryHandler
 from .story_handler import StoryHandler
 from .managed_bot_update_handler import ManagedBotUpdateHandler
+from .message_generation_stopped_handler import MessageGenerationStoppedHandler

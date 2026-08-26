@@ -16,20 +16,31 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
-from .send_ephemeral_message import SendEphemeralMessage
-from .delete_ephemeral_message import DeleteEphemeralMessage
-from .edit_ephemeral_message_text import EditEphemeralMessageText
-from .edit_ephemeral_message_media import EditEphemeralMessageMedia
-from .edit_ephemeral_message_caption import EditEphemeralMessageCaption
-from .edit_ephemeral_message_reply_markup import EditEphemeralMessageReplyMarkup
+import pyrogram
+from pyrogram import raw, types
+from ..object import Object
 
 
-class Ephemeral(
-    SendEphemeralMessage,
-    DeleteEphemeralMessage,
-    EditEphemeralMessageText,
-    EditEphemeralMessageMedia,
-    EditEphemeralMessageCaption,
-    EditEphemeralMessageReplyMarkup,
-):
-    pass
+class RichTextButton(Object):
+    """This object represents a button reference in rich text.
+
+    Parameters:
+        button (:obj:`~pyrogram.types.RichMessageButton`):
+            The button.
+    """
+
+    def __init__(self, *, button: "types.RichMessageButton"):
+        super().__init__()
+
+        self.button = button
+
+    @staticmethod
+    def read(button: "raw.types.RichTextButton"):
+        return RichTextButton(
+            button=types.RichMessageButton.read(button.button),
+        )
+
+    async def write(self, client: "pyrogram.Client"):
+        return raw.types.RichTextButton(
+            button=await self.button.write(client),
+        )

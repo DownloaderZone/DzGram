@@ -90,14 +90,17 @@ from .rich_block import (
     RichBlockAudio,
     RichBlockAuthorDate,
     RichBlockBlockQuotation,
+    RichBlockButtons,
     RichBlockCaption,
     RichBlockChatLink,
     RichBlockCollage,
     RichBlockCover,
     RichBlockDetails,
     RichBlockDivider,
+    RichBlockDocument,
     RichBlockEmbedded,
     RichBlockEmbeddedPost,
+    RichBlockExpandableBlockQuotation,
     RichBlockFooter,
     RichBlockHeader,
     RichBlockKicker,
@@ -124,6 +127,9 @@ from .rich_block import (
     RichBlockVoiceNote,
 )
 from .rich_message import RichMessage
+from .ephemeral_message_parameters import EphemeralMessageParameters
+from .message_generation_stopped import MessageGenerationStopped
+from .community_chat_joined import CommunityChatJoined
 
 __all__ = [
     "Animation",
@@ -197,14 +203,17 @@ __all__ = [
     "RichBlockAudio",
     "RichBlockAuthorDate",
     "RichBlockBlockQuotation",
+    "RichBlockButtons",
     "RichBlockCaption",
     "RichBlockChatLink",
     "RichBlockCollage",
     "RichBlockCover",
     "RichBlockDetails",
     "RichBlockDivider",
+    "RichBlockDocument",
     "RichBlockEmbedded",
     "RichBlockEmbeddedPost",
+    "RichBlockExpandableBlockQuotation",
     "RichBlockFooter",
     "RichBlockHeader",
     "RichBlockKicker",
@@ -258,4 +267,7 @@ __all__ = [
     "RichTextTextMention",
     "RichTextUnderline",
     "RichTextUrl",
+    "EphemeralMessageParameters",
+    "MessageGenerationStopped",
+    "CommunityChatJoined",
 ]

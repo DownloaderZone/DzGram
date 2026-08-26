@@ -28,12 +28,19 @@ class InlineKeyboardMarkup(Object):
         inline_keyboard (List of List of :obj:`~pyrogram.types.InlineKeyboardButton`):
             List of button rows, each represented by a List of InlineKeyboardButton objects.
 
+        force_reply (``bool``, *optional*):
+            If True, forces the user to reply to this message.
     """
 
-    def __init__(self, inline_keyboard: list[list["types.InlineKeyboardButton"]]):
+    def __init__(
+        self,
+        inline_keyboard: list[list["types.InlineKeyboardButton"]],
+        force_reply: bool = None,
+    ):
         super().__init__()
 
         self.inline_keyboard = inline_keyboard
+        self.force_reply = force_reply
 
     @staticmethod
     def read(o):
@@ -48,7 +55,8 @@ class InlineKeyboardMarkup(Object):
             inline_keyboard.append(row)
 
         return InlineKeyboardMarkup(
-            inline_keyboard=inline_keyboard
+            inline_keyboard=inline_keyboard,
+            force_reply=getattr(o, "force_reply", None),
         )
 
     async def write(self, client: "pyrogram.Client"):
@@ -62,7 +70,10 @@ class InlineKeyboardMarkup(Object):
 
             rows.append(raw.types.KeyboardButtonRow(buttons=buttons))
 
-        return raw.types.ReplyInlineMarkup(rows=rows)
+        return raw.types.ReplyInlineMarkup(
+            rows=rows,
+            force_reply=self.force_reply or None,
+        )
 
         # There seems to be a Python issues with nested async comprehensions.
         # See: https://bugs.python.org/issue33346

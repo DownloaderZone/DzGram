@@ -16,20 +16,31 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
-from .send_ephemeral_message import SendEphemeralMessage
-from .delete_ephemeral_message import DeleteEphemeralMessage
-from .edit_ephemeral_message_text import EditEphemeralMessageText
-from .edit_ephemeral_message_media import EditEphemeralMessageMedia
-from .edit_ephemeral_message_caption import EditEphemeralMessageCaption
-from .edit_ephemeral_message_reply_markup import EditEphemeralMessageReplyMarkup
+import pyrogram
+from pyrogram import raw
+from ..object import Object
 
 
-class Ephemeral(
-    SendEphemeralMessage,
-    DeleteEphemeralMessage,
-    EditEphemeralMessageText,
-    EditEphemeralMessageMedia,
-    EditEphemeralMessageCaption,
-    EditEphemeralMessageReplyMarkup,
-):
-    pass
+class MessageGenerationStopped(Object):
+    """This object represents a service message that message generation has stopped.
+
+    Parameters:
+        chat_id (``int``):
+            Chat ID.
+
+        message_id (``int``):
+            Message ID.
+    """
+
+    def __init__(self, *, chat_id: int, message_id: int):
+        super().__init__()
+
+        self.chat_id = chat_id
+        self.message_id = message_id
+
+    @staticmethod
+    def _parse(update: "raw.types.UpdateMessageGenerationStopped"):
+        return MessageGenerationStopped(
+            chat_id=update.chat_id,
+            message_id=update.message_id,
+        )

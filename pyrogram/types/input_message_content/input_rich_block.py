@@ -420,6 +420,9 @@ class InputRichBlockTable(InputRichBlock):
 
         striped (``bool``, *optional*):
             Pass *True* to display the table with alternating row colors.
+
+        compact (``bool``, *optional*):
+            Pass *True* to display the table in a compact layout.
     """
 
     def __init__(
@@ -428,6 +431,7 @@ class InputRichBlockTable(InputRichBlock):
         rows: List[List["InputRichBlockTableCell"]],
         bordered: Optional[bool] = None,
         striped: Optional[bool] = None,
+        compact: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -435,6 +439,7 @@ class InputRichBlockTable(InputRichBlock):
         self.rows = rows
         self.bordered = bordered
         self.striped = striped
+        self.compact = compact
 
     def write(self) -> "raw.base.PageBlock":
         return raw.types.PageBlockTable(
@@ -447,6 +452,7 @@ class InputRichBlockTable(InputRichBlock):
             ],
             bordered=self.bordered,
             striped=self.striped,
+            compact=self.compact,
         )
 
 
@@ -819,4 +825,94 @@ class InputRichBlockThinking(InputRichBlock):
     def write(self) -> "raw.base.PageBlock":
         return raw.types.PageBlockThinking(
             text=_to_rich_text(self.text)
+        )
+
+
+class InputRichBlockButtons(InputRichBlock):
+    """A buttons block, displaying a row of interactive buttons.
+
+    Parameters:
+        buttons (List of :obj:`~pyrogram.types.RichMessageButton`):
+            List of buttons to display.
+
+        alignment (``int``, *optional*):
+            Alignment of the buttons row.
+    """
+
+    def __init__(
+        self,
+        buttons: List["types.RichMessageButton"],
+        alignment: Optional[int] = None,
+    ):
+        super().__init__()
+
+        self.buttons = buttons
+        self.alignment = alignment
+
+    def write(self) -> "raw.base.PageBlock":
+        return raw.types.InputRichBlockButtons(
+            buttons=self.buttons,
+            alignment=self.alignment,
+        )
+
+
+class InputRichBlockExpandableBlockQuotation(InputRichBlock):
+    """An expandable block quotation that can be collapsed or expanded.
+
+    Parameters:
+        text (``str`` | :obj:`~pyrogram.raw.base.RichText`):
+            Content of the block quotation.
+
+        caption (``str`` | :obj:`~pyrogram.raw.base.RichText`, *optional*):
+            Caption or summary of the block quotation.
+
+        collapsed_by_default (``bool``, *optional*):
+            Pass *True* to display the block quotation collapsed by default.
+    """
+
+    def __init__(
+        self,
+        text: Union[str, "raw.base.RichText"],
+        caption: Union[str, "raw.base.RichText"],
+        collapsed_by_default: Optional[bool] = None,
+    ):
+        super().__init__()
+
+        self.text = text
+        self.caption = caption
+        self.collapsed_by_default = collapsed_by_default
+
+    def write(self) -> "raw.base.PageBlock":
+        return raw.types.InputRichBlockExpandableBlockQuotation(
+            text=_to_rich_text(self.text),
+            caption=_to_rich_text(self.caption),
+            collapsed_by_default=self.collapsed_by_default,
+        )
+
+
+class InputRichBlockDocument(InputRichBlock):
+    """A document block, embedding a file in the message.
+
+    Parameters:
+        document (:obj:`~pyrogram.raw.base.InputDocument`):
+            The document to embed.
+
+        caption (``str`` | :obj:`~pyrogram.raw.base.RichText`, *optional*):
+            Caption of the document.
+    """
+
+    def __init__(
+        self,
+        document: "raw.base.InputDocument",
+        caption: Optional[Union[str, "raw.base.RichText"]] = None,
+    ):
+        super().__init__()
+
+        self.document = document
+        self.caption = caption
+
+    def write(self) -> "raw.base.PageBlock":
+        return raw.types.InputRichBlockDocument(
+            document=self.document,
+            caption=_to_page_caption(text=self.caption),
         )

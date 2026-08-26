@@ -43,6 +43,7 @@ from pyrogram.handlers import (
 
 
     ManagedBotUpdateHandler,
+    MessageGenerationStoppedHandler,
     DeletedMessagesHandler,
     UserStatusHandler,
     StoryHandler,
@@ -69,6 +70,7 @@ from pyrogram.raw.types import (
     UpdateBotBusinessConnect,
     UpdateBotPurchasedPaidMedia,
     UpdateManagedBot,
+    UpdateMessageGenerationStopped,
 )
 
 log = logging.getLogger(__name__)
@@ -94,6 +96,7 @@ class Dispatcher:
     BOT_BUSINESS_CONNECT_UPDATES = (UpdateBotBusinessConnect,)
     PURCHASED_PAID_MEDIA_UPDATES = (UpdateBotPurchasedPaidMedia,)
     MANAGED_BOT_UPDATES = (UpdateManagedBot,)
+    MESSAGE_GENERATION_STOPPED_UPDATES = (UpdateMessageGenerationStopped,)
 
     def __init__(self, client: "pyrogram.Client"):
         self.client = client
@@ -246,6 +249,12 @@ class Dispatcher:
                 ManagedBotUpdateHandler
             )
 
+        async def message_generation_stopped_parser(update, users, chats):
+            return (
+                pyrogram.types.MessageGenerationStopped._parse(update),
+                MessageGenerationStoppedHandler
+            )
+
         self.update_parsers = {
             Dispatcher.NEW_MESSAGE_UPDATES: message_parser,
             Dispatcher.EDIT_MESSAGE_UPDATES: edited_message_parser,
@@ -266,6 +275,7 @@ class Dispatcher:
             Dispatcher.BOT_BUSINESS_CONNECT_UPDATES: bot_business_connect_parser,
             Dispatcher.PURCHASED_PAID_MEDIA_UPDATES: purchased_paid_media_parser,
             Dispatcher.MANAGED_BOT_UPDATES: managed_bot_update_parser,
+            Dispatcher.MESSAGE_GENERATION_STOPPED_UPDATES: message_generation_stopped_parser,
         }
 
         self.update_parsers = {key: value for key_tuple, value in self.update_parsers.items() for key in key_tuple}

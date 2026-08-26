@@ -367,6 +367,9 @@ class Message(Object, Update):
         managed_bot_created (:obj:`~pyrogram.types.ManagedBotCreated`, *optional*):
             Service message: user created a bot that will be managed by the current bot.
 
+        community_chat_joined (:obj:`~pyrogram.types.CommunityChatJoined`, *optional*):
+            Service message: user joined a community chat.
+
         paid_message_price_changed (:obj:`~pyrogram.types.PaidMessagePriceChanged`, *optional*):
             Service message: the price for paid messages has changed in the chat.
 
@@ -619,6 +622,7 @@ class Message(Object, Update):
         contact_registered: "types.ContactRegistered" = None,
         chat_join_type: "enums.ChatJoinType" = None,
         screenshot_taken: "types.ScreenshotTaken" = None,
+        community_chat_joined: Optional["types.CommunityChatJoined"] = None,
         managed_bot_created: "types.ManagedBotCreated" = None,
         poll_option_added: "types.PollOptionAdded" = None,
         poll_option_deleted: "types.PollOptionDeleted" = None,
@@ -747,6 +751,7 @@ class Message(Object, Update):
         self.reply_to_checklist_task_id = reply_to_checklist_task_id
         self.reply_to_poll_option_id = reply_to_poll_option_id
         self.direct_messages_topic = direct_messages_topic
+        self.community_chat_joined = community_chat_joined
         self.managed_bot_created = managed_bot_created
         self.poll_option_added = poll_option_added
         self.poll_option_deleted = poll_option_deleted
@@ -864,6 +869,7 @@ class Message(Object, Update):
             checklist_tasks_done = None
             checklist_tasks_added = None
 
+            community_chat_joined = None
             managed_bot_created = None
             poll_option_added = None
             poll_option_deleted = None
@@ -1173,6 +1179,9 @@ class Message(Object, Update):
             elif isinstance(action, raw.types.MessageActionManagedBotCreated):
                 service_type = enums.MessageServiceType.MANAGED_BOT_CREATED
                 managed_bot_created = types.ManagedBotCreated._parse(client, action, users)
+            elif isinstance(action, raw.types.MessageActionCommunityChatJoined):
+                service_type = enums.MessageServiceType.COMMUNITY_CHAT_JOINED
+                community_chat_joined = types.CommunityChatJoined._parse(client, message)
 
             parsed_message = Message(
                 id=message.id,
@@ -1229,6 +1238,7 @@ class Message(Object, Update):
                 reactions=types.MessageReactions._parse(client, message.reactions) if message.reactions else None,
                 checklist_tasks_done=checklist_tasks_done,
                 checklist_tasks_added=checklist_tasks_added,
+                community_chat_joined=community_chat_joined,
                 managed_bot_created=managed_bot_created,
                 poll_option_added=poll_option_added,
                 poll_option_deleted=poll_option_deleted,

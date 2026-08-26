@@ -162,6 +162,12 @@ class MessageServiceType(AutoName):
     CHAT_OWNER_CHANGED = auto()
     "Chat owner changed"
 
+    COMMUNITY_CHAT_JOINED = auto()
+    "User joined a community chat"
+
+    MESSAGE_GENERATION_STOPPED = auto()
+    "Message generation has been stopped"
+
     CHAT_HAS_PROTECTED_CONTENT_TOGGLED = auto()
     "Chat has_protected_content setting was changed or request to change it was rejected"
 
