@@ -67,7 +67,6 @@ class ReplyKeyboardMarkup(Object):
         input_field_placeholder: str = None,
         selective: bool = None,
         placeholder: str = None,
-        force_reply: bool = None,
     ):
         if placeholder and input_field_placeholder:
             raise ValueError(
@@ -89,7 +88,6 @@ class ReplyKeyboardMarkup(Object):
         self.one_time_keyboard = one_time_keyboard
         self.input_field_placeholder = input_field_placeholder
         self.selective = selective
-        self.force_reply = force_reply
 
     @staticmethod
     def read(kb: "raw.base.ReplyMarkup"):
@@ -110,7 +108,6 @@ class ReplyKeyboardMarkup(Object):
             one_time_keyboard=kb.single_use,
             selective=kb.selective,
             input_field_placeholder=kb.placeholder,
-            force_reply=getattr(kb, "force_reply", None),
         )
 
     async def write(self, _: "pyrogram.Client"):
@@ -127,5 +124,4 @@ class ReplyKeyboardMarkup(Object):
             selective=self.selective or None,
             persistent=self.is_persistent or None,
             placeholder=self.input_field_placeholder or None,
-            force_reply=self.force_reply or None,
         )

@@ -31,8 +31,6 @@ class SendMessageDraft:
         parse_mode: Optional["enums.ParseMode"] = None,
         entities: list["types.MessageEntity"] = None,
         message_thread_id: int = None,
-        can_stop: bool = None,
-        keep_on_stop: bool = None,
     ) -> bool:
         """Sends a draft for a being generated text message.
 
@@ -59,12 +57,6 @@ class SendMessageDraft:
 
             message_thread_id (``int``, *optional*):
                 Unique identifier for the target message thread.
-
-            can_stop (``bool``, *optional*):
-                Set to True if the user can stop the draft at any time.
-
-            keep_on_stop (``bool``, *optional*):
-                Set to True to keep the draft after the message is sent.
 
         Returns:
             ``bool``: On success, True is returned.
@@ -116,8 +108,6 @@ class SendMessageDraft:
                         text=message,
                         entities=entities or []
                     ),
-                    can_stop=can_stop,
-                    keep_on_stop=keep_on_stop,
                 ),
                 top_msg_id=message_thread_id
             )

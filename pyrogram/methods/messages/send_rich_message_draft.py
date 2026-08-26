@@ -11,8 +11,6 @@ class SendRichMessageDraft:
         draft_id: int,
         rich_message: "types.InputRichMessage",
         message_thread_id: Optional[int] = None,
-        can_stop: bool = None,
-        keep_on_stop: bool = None,
     ) -> bool:
         """Send a rich message draft action, allowing bots to stream partial rich messages.
 
@@ -40,12 +38,6 @@ class SendRichMessageDraft:
 
             message_thread_id (``int``, *optional*):
                 Unique identifier for a forum topic thread.
-
-            can_stop (``bool``, *optional*):
-                Set to True if the user can stop the draft at any time.
-
-            keep_on_stop (``bool``, *optional*):
-                Set to True to keep the draft after the message is sent.
 
         Returns:
             ``bool``: On success, True is returned.
@@ -77,8 +69,6 @@ class SendRichMessageDraft:
                 action=raw.types.InputSendMessageRichMessageDraftAction(
                     random_id=draft_id,
                     rich_message=rich_message.write(),
-                    can_stop=can_stop,
-                    keep_on_stop=keep_on_stop,
                 ),
                 top_msg_id=message_thread_id,
             )

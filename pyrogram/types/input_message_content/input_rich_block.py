@@ -420,9 +420,6 @@ class InputRichBlockTable(InputRichBlock):
 
         striped (``bool``, *optional*):
             Pass *True* to display the table with alternating row colors.
-
-        compact (``bool``, *optional*):
-            Pass *True* to display the table in a compact layout.
     """
 
     def __init__(
@@ -431,7 +428,6 @@ class InputRichBlockTable(InputRichBlock):
         rows: List[List["InputRichBlockTableCell"]],
         bordered: Optional[bool] = None,
         striped: Optional[bool] = None,
-        compact: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -439,7 +435,6 @@ class InputRichBlockTable(InputRichBlock):
         self.rows = rows
         self.bordered = bordered
         self.striped = striped
-        self.compact = compact
 
     def write(self) -> "raw.base.PageBlock":
         return raw.types.PageBlockTable(
@@ -452,7 +447,6 @@ class InputRichBlockTable(InputRichBlock):
             ],
             bordered=self.bordered,
             striped=self.striped,
-            compact=self.compact,
         )
 
 
