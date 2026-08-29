@@ -16,11 +16,14 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
+import hashlib
 import logging
 import os
 from struct import pack, unpack
 from typing import Optional
 
+import pyrogram
 from pyrogram.crypto import aes
 from .tcp import TCP
 
@@ -28,10 +31,10 @@ log = logging.getLogger(__name__)
 
 
 class TCPIntermediateO(TCP):
-    RESERVED = (b"HEAD", b"POST", b"GET ", b"OPTI", b"\xee" * 4)
+    RESERVED = (b"HEAD", b"POST", b"GET ", b"OPTI", b"\xdd\xdd\xdd\xdd", b"\xee\xee\xee\xee")
 
-    def __init__(self, ipv6: bool, proxy: dict):
-        super().__init__(ipv6, proxy)
+    def __init__(self, ipv6: bool, proxy: dict, loop: Optional[asyncio.AbstractEventLoop] = None):
+        super().__init__(ipv6, proxy, loop)
 
         self.encrypt = None
         self.decrypt = None
@@ -42,15 +45,24 @@ class TCPIntermediateO(TCP):
         while True:
             nonce = bytearray(os.urandom(64))
 
-            if nonce[0] != b"\xef" and nonce[:4] not in self.RESERVED and nonce[4:4] != b"\x00" * 4:
-                nonce[56] = nonce[57] = nonce[58] = nonce[59] = 0xee
+            if (
+                nonce[0] != 0xEF
+                and bytes(nonce[:4]) not in self.RESERVED
+                and nonce[4:8] != b"\x00\x00\x00\x00"
+            ):
                 break
 
-        temp = bytearray(nonce[55:7:-1])
+        reversed_tail = bytearray(nonce[55:7:-1])
 
-        self.encrypt = (nonce[8:40], nonce[40:56], bytearray(1))
-        self.decrypt = (temp[0:32], temp[32:48], bytearray(1))
+        encrypt_key = hashlib.sha256(bytes(nonce[8:40])).digest()
+        encrypt_iv = bytearray(nonce[40:56])
+        decrypt_key = hashlib.sha256(bytes(reversed_tail[0:32])).digest()
+        decrypt_iv = bytearray(reversed_tail[32:48])
 
+        self.encrypt = (encrypt_key, encrypt_iv, bytearray(1))
+        self.decrypt = (decrypt_key, decrypt_iv, bytearray(1))
+
+        nonce[56:60] = b"\xdd\xdd\xdd\xdd"
         nonce[56:64] = aes.ctr256_encrypt(nonce, *self.encrypt)[56:64]
 
         await super().send(nonce)

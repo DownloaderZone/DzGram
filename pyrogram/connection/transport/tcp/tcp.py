@@ -22,13 +22,14 @@ import logging
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 try:
     import socks
 except ImportError as e:
     e.msg = (
         "PySocks is missing and Pyrogram can't run without. "
-        "Please install it using \"pip3 install pysocks\"."
+        'Please install it using "pip3 install pysocks".'
     )
 
     raise e
@@ -41,14 +42,18 @@ log = logging.getLogger(__name__)
 class TCP:
     TIMEOUT = 10
 
-    def __init__(self, ipv6: bool, proxy: dict):
+    def __init__(self, ipv6: bool, proxy: dict, loop: Optional[asyncio.AbstractEventLoop] = None):
         self.socket = None
 
-        self.reader = None  # type: asyncio.StreamReader
-        self.writer = None  # type: asyncio.StreamWriter
+        self.reader: Optional[asyncio.StreamReader] = None
+        self.writer: Optional[asyncio.StreamWriter] = None
 
         self.lock = asyncio.Lock()
-        self.loop = utils.get_event_loop()
+
+        if isinstance(loop, asyncio.AbstractEventLoop):
+            self.loop = loop
+        else:
+            self.loop = utils.get_event_loop()
 
         if proxy:
             hostname = proxy.get("hostname")
@@ -71,7 +76,7 @@ class TCP:
                 password=proxy.get("password", None)
             )
 
-            log.info(f"Using proxy {hostname}")
+            log.info("Using proxy %s", hostname)
         else:
             self.socket = socks.socksocket(
                 socket.AF_INET6 if ipv6
@@ -80,11 +85,27 @@ class TCP:
 
         self.socket.settimeout(TCP.TIMEOUT)
 
+    @staticmethod
+    def _enable_keepalive(sock: socket.socket) -> None:
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10)
+            if hasattr(socket, "TCP_KEEPINTVL"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 5)
+            if hasattr(socket, "TCP_KEEPCNT"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+        except Exception as e:
+            log.debug("Could not configure TCP Keep-Alive: %s %s", type(e).__name__, e)
+
     async def connect(self, address: tuple):
         # The socket used by the whole logic is blocking and thus it blocks when connecting.
         # Offload the task to a thread executor to avoid blocking the main event loop.
         with ThreadPoolExecutor(1) as executor:
             await self.loop.run_in_executor(executor, self.socket.connect, address)
+
+        self._enable_keepalive(self.socket)
 
         self.reader, self.writer = await asyncio.open_connection(sock=self.socket)
 
@@ -97,8 +118,6 @@ class TCP:
             except OSError:
                 pass
             finally:
-                # A tiny sleep placed here helps avoiding .recv(n) hanging until the timeout.
-                # This is a workaround that seems to fix the occasional delayed stop of a client.
                 time.sleep(0.001)
                 self.socket.close()
 

@@ -283,4 +283,5 @@ class Auth:
             else:
                 return auth_key
             finally:
-                self.connection.close()
+                if self.connection and self.connection.protocol:
+                    self.connection.close()

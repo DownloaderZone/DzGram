@@ -22,28 +22,36 @@ import logging
 import os
 from hashlib import sha1
 from io import BytesIO
+from typing import Any, Dict, List, Optional, Set
 
 import pyrogram
 from pyrogram import raw
 from pyrogram.connection import Connection
 from pyrogram.crypto import mtproto
 from pyrogram.errors import (
-    RPCError, InternalServerError, AuthKeyDuplicated,
-    FloodWait, FloodPremiumWait,
-    ServiceUnavailable, BadMsgNotification,
+    AuthKeyDuplicated,
+    BadMsgNotification,
+    FloodPremiumWait,
+    FloodWait,
+    InternalServerError,
+    RPCError,
     SecurityCheckMismatch,
+    ServiceUnavailable,
 )
 from pyrogram.raw.all import layer
-from pyrogram.raw.core import TLObject, MsgContainer, Int, FutureSalts
-from .internals import MsgId, MsgFactory
+from pyrogram.raw.core import FutureSalts, Int, MsgContainer, TLObject
+
+from .internals import MsgFactory, MsgId
 
 log = logging.getLogger(__name__)
 
 
 class Result:
+    __slots__ = ("value", "event")
+
     def __init__(self):
-        self.value = None
-        self.event = asyncio.Event()
+        self.value: Any = None
+        self.event: asyncio.Event = asyncio.Event()
 
 
 class Session:
@@ -54,12 +62,6 @@ class Session:
     ACKS_THRESHOLD = 8
     PING_INTERVAL = 5
     STORED_MSG_IDS_MAX_SIZE = 1000 * 2
-
-    TRANSPORT_ERRORS = {
-        404: "auth key not found",
-        429: "transport flood",
-        444: "invalid DC"
-    }
 
     CUR_ALWD_INNR_QRYS = (
         raw.functions.InvokeWithoutUpdates,
@@ -83,7 +85,7 @@ class Session:
         self.is_media = is_media
         self.is_cdn = is_cdn
 
-        self.connection = None
+        self.connection: Optional[Connection] = None
 
         self.auth_key_id = sha1(auth_key).digest()[-8:]
 
@@ -92,19 +94,18 @@ class Session:
 
         self.salt = 0
 
-        self.pending_acks = set()
+        self.pending_acks: Set[int] = set()
 
-        self.results = {}
+        self.results: Dict[int, Result] = {}
 
-        self.stored_msg_ids = []
+        self.stored_msg_ids: List[int] = []
 
-        self.ping_task = None
+        self.ping_task: Optional[asyncio.Task] = None
         self.ping_task_event = asyncio.Event()
 
-        self.network_task = None
+        self.recv_task: Optional[asyncio.Task] = None
 
         self.is_connected = asyncio.Event()
-
 
     async def start(self):
         while True:
@@ -113,13 +114,13 @@ class Session:
                 self.test_mode,
                 self.client.ipv6,
                 self.client.proxy,
-                self.is_media
+                self.is_media,
             )
 
             try:
                 await self.connection.connect()
 
-                self.network_task = self.client.loop.create_task(self.network_worker())
+                self.recv_task = self.client.loop.create_task(self.recv_worker())
 
                 await self.send(raw.functions.Ping(ping_id=0), timeout=self.START_TIMEOUT)
 
@@ -134,13 +135,13 @@ class Session:
                                 system_version=self.client.system_version,
                                 system_lang_code=self.client.lang_code,
                                 lang_code=self.client.lang_code,
-                                lang_pack="",  # "langPacks are for official apps only"
+                                lang_pack="",
                                 query=raw.functions.help.GetConfig(),
                                 proxy=raw.types.InputClientProxy(
                                     address=self.client._un_docu_gnihts[0],
                                     port=self.client._un_docu_gnihts[1],
                                 ) if len(self.client._un_docu_gnihts) == 3 else None,
-                                params=self.client._un_docu_gnihts[2] if len(self.client._un_docu_gnihts) == 3 else None
+                                params=self.client._un_docu_gnihts[2] if len(self.client._un_docu_gnihts) == 3 else None,
                             )
                         ),
                         timeout=self.START_TIMEOUT
@@ -148,9 +149,9 @@ class Session:
 
                 self.ping_task = self.client.loop.create_task(self.ping_worker())
 
-                log.info(f"Session initialized: Layer {layer}")
-                log.info(f"Device: {self.client.device_model} - {self.client.app_version}")
-                log.info(f"System: {self.client.system_version} ({self.client.lang_code.upper()})")
+                log.info("Session initialized: Pyrogram v%s (Layer %s)", pyrogram.__version__, layer)
+                log.info("Device: %s - %s", self.client.device_model, self.client.app_version)
+                log.info("System: %s (%s)", self.client.system_version, self.client.lang_code.upper())
 
             except AuthKeyDuplicated as e:
                 await self.stop()
@@ -179,17 +180,11 @@ class Session:
 
         self.connection.close()
 
-        if self.network_task:
-            await self.network_task
+        if self.recv_task:
+            await self.recv_task
 
         for i in self.results.values():
             i.event.set()
-
-        if not self.is_media and callable(self.client.disconnect_handler):
-            try:
-                await self.client.disconnect_handler(self.client)
-            except Exception as e:
-                log.error(e, exc_info=True)
 
         log.info("Session stopped")
 
@@ -206,7 +201,6 @@ class Session:
                 self.session_id,
                 self.auth_key,
                 self.auth_key_id,
-                # self.stored_msg_ids
             )
         except SecurityCheckMismatch:
             return
@@ -217,15 +211,9 @@ class Session:
             else [data]
         )
 
-        # Call log.debug twice because calling it once by appending "data" to the previous string (i.e. f"Kind: {data}")
-        # will cause "data" to be evaluated as string every time instead of only when debug is actually enabled.
-        log.debug("Received:")
-        log.debug(data)
+        log.debug("Received: %s", data)
 
         for msg in messages:
-            # if msg.seq_no == 0:
-            #     MsgId.set_server_time(msg.msg_id / (2 ** 32))
-
             if msg.seq_no % 2 != 0:
                 if msg.msg_id in self.pending_acks:
                     continue
@@ -238,20 +226,28 @@ class Session:
 
                 if self.stored_msg_ids:
                     if msg.msg_id < self.stored_msg_ids[0]:
-                        raise SecurityCheckMismatch("The msg_id is lower than all the stored values")
+                        raise SecurityCheckMismatch(
+                            "The msg_id is lower than all the stored values"
+                        )
 
                     if msg.msg_id in self.stored_msg_ids:
-                        raise SecurityCheckMismatch("The msg_id is equal to any of the stored values")
+                        raise SecurityCheckMismatch(
+                            "The msg_id is equal to any of the stored values"
+                        )
 
                     time_diff = (msg.msg_id - MsgId()) / 2 ** 32
 
                     if time_diff > 30:
-                        raise SecurityCheckMismatch("The msg_id belongs to over 30 seconds in the future. "
-                                                    "Most likely the client time has to be synchronized.")
+                        raise SecurityCheckMismatch(
+                            "The msg_id belongs to over 30 seconds in the future. "
+                            "Most likely the client time has to be synchronized."
+                        )
 
                     if time_diff < -300:
-                        raise SecurityCheckMismatch("The msg_id belongs to over 300 seconds in the past. "
-                                                    "Most likely the client time has to be synchronized.")
+                        raise SecurityCheckMismatch(
+                            "The msg_id belongs to over 300 seconds in the past. "
+                            "Most likely the client time has to be synchronized."
+                        )
             except SecurityCheckMismatch as e:
                 log.info("Discarding packet: %s", e)
                 return
@@ -282,11 +278,11 @@ class Session:
                 self.results[msg_id].event.set()
 
         if len(self.pending_acks) >= self.ACKS_THRESHOLD:
-            log.debug(f"Send {len(self.pending_acks)} acks")
+            log.debug("Sending %s acks", len(self.pending_acks))
 
             try:
                 await self.send(raw.types.MsgsAck(msg_ids=list(self.pending_acks)), False)
-            except (OSError, TimeoutError):
+            except OSError:
                 pass
             else:
                 self.pending_acks.clear()
@@ -305,15 +301,17 @@ class Session:
             try:
                 await self.send(
                     raw.functions.PingDelayDisconnect(
-                        ping_id=0, disconnect_delay=self.WAIT_TIMEOUT + 10
-                    ), False
+                        ping_id=0,
+                        disconnect_delay=self.WAIT_TIMEOUT + 10
+                    ),
+                    wait_response=False
                 )
             except (OSError, TimeoutError, RPCError):
                 pass
 
         log.info("PingTask stopped")
 
-    async def network_worker(self):
+    async def recv_worker(self):
         log.info("NetworkTask started")
 
         while True:
@@ -321,7 +319,7 @@ class Session:
 
             if packet is None or len(packet) == 4:
                 if packet:
-                    log.warning(f'Server sent "{Int.read(BytesIO(packet))}"')
+                    log.warning('Server sent "%s"', -Int.read(BytesIO(packet)))
 
                 if self.is_connected.is_set():
                     self.client.loop.create_task(self.restart())
@@ -344,10 +342,7 @@ class Session:
         if wait_response:
             self.results[msg_id] = Result()
 
-        # Call log.debug twice because calling it once by appending "data" to the previous string (i.e. f"Kind: {data}")
-        # will cause "data" to be evaluated as string every time instead of only when debug is actually enabled.
-        log.debug(f"Sent:")
-        log.debug(message)
+        log.debug("Sent: %s", message)
 
         payload = await self.client.loop.run_in_executor(
             pyrogram.crypto_executor,
@@ -375,18 +370,23 @@ class Session:
 
             if result is None:
                 raise TimeoutError
-            elif isinstance(result, raw.types.RpcError):
+
+            if isinstance(result, raw.types.RpcError):
                 if isinstance(data, Session.CUR_ALWD_INNR_QRYS):
                     data = data.query
 
                 RPCError.raise_it(result, type(data))
-            elif isinstance(result, raw.types.BadMsgNotification):
-                raise BadMsgNotification(result.error_code)
-            elif isinstance(result, raw.types.BadServerSalt):
+
+            if isinstance(result, raw.types.BadMsgNotification):
+                log.warning(
+                    "%s: %s", BadMsgNotification.__name__, BadMsgNotification(result.error_code)
+                )
+
+            if isinstance(result, raw.types.BadServerSalt):
                 self.salt = result.new_server_salt
                 return await self.send(data, wait_response, timeout)
-            else:
-                return result
+
+            return result
 
     async def invoke(
         self,
@@ -418,28 +418,42 @@ class Session:
                 if amount > sleep_threshold >= 0:
                     raise
 
-                log.warning(f'[{self.client.name}] Waiting for {amount} seconds before continuing '
-                            f'(required by "{query_name}")')
+                log.warning(
+                    '[%s] Waiting for %s seconds before continuing (required by "%s")',
+                    self.client.name,
+                    amount,
+                    query_name,
+                )
 
                 await asyncio.sleep(amount)
             except (OSError, TimeoutError, InternalServerError, ServiceUnavailable) as e:
                 if (
-                    retries == 0 or
-                    (
-                        isinstance(e, InternalServerError) and
-                        getattr(e, "code", 0) == 500 and
-                        (e.ID or e.NAME) in [
+                    retries == 0
+                    or (
+                        isinstance(e, InternalServerError)
+                        and getattr(e, "code", 0) == 500
+                        and (e.ID or e.NAME) in [
                             "HISTORY_GET_FAILED",
                             "PERSISTENT_TIMESTAMP_OUTDATED",
                         ]
                     )
                 ):
                     raise e from None
-                # TODO: fix conditions here
+
                 (log.warning if retries < 2 else log.info)(
-                    f'[{Session.MAX_RETRIES - retries + 1}] Retrying "{query_name}" due to {str(e) or repr(e)}')
+                    '[%s] Retrying "%s" due to %s',
+                    Session.MAX_RETRIES - retries + 1,
+                    query_name,
+                    str(e) or repr(e),
+                )
 
                 await asyncio.sleep(0.5)
 
-                return await self.invoke(query, retries - 1, timeout)
+                retries -= 1
         raise TimeoutError("Exceeded maximum number of retries")
+
+    def __str__(self) -> str:
+        return (
+            f"Session(dc_id={self.dc_id}, test_mode={self.test_mode}, "
+            f"is_media={self.is_media}, is_cdn={self.is_cdn})"
+        )

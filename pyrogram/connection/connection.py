@@ -37,7 +37,16 @@ class Connection:
         4: TCPIntermediateO
     }
 
-    def __init__(self, dc_id: int, test_mode: bool, ipv6: bool, proxy: dict, media: bool = False, mode: int = 3):
+    def __init__(
+        self,
+        dc_id: int,
+        test_mode: bool,
+        ipv6: bool,
+        proxy: dict,
+        media: bool = False,
+        mode: int = 1,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ):
         self.dc_id = dc_id
         self.test_mode = test_mode
         self.ipv6 = ipv6
@@ -46,27 +55,31 @@ class Connection:
         self.address = DataCenter(dc_id, test_mode, ipv6, media)
         self.mode = self.MODES.get(mode, TCPAbridged)
 
-        self.protocol = None  # type: TCP
+        self.protocol: Optional[TCP] = None
+
+        if isinstance(loop, asyncio.AbstractEventLoop):
+            self.loop = loop
+        else:
+            self.loop = asyncio.get_event_loop()
 
     async def connect(self):
         for i in range(Connection.MAX_RETRIES):
-            self.protocol = self.mode(self.ipv6, self.proxy)
+            self.protocol = self.mode(self.ipv6, self.proxy, loop=self.loop)
 
             try:
                 log.info("Connecting...")
                 await self.protocol.connect(self.address)
             except OSError as e:
-                log.warning(f"Unable to connect due to network issues: {e}")
+                log.warning("Unable to connect due to network issues: %s", e)
                 self.protocol.close()
-                await asyncio.sleep(1)
             else:
-                log.info("Connected! {} DC{}{} - IPv{} - {}".format(
-                    "Test" if self.test_mode else "Production",
-                    self.dc_id,
-                    " (media)" if self.media else "",
-                    "6" if self.ipv6 else "4",
-                    self.mode.__name__,
-                ))
+                log.info("Connected! %s DC%s%s - IPv%s - %s",
+                         "Test" if self.test_mode else "Production",
+                         self.dc_id,
+                         " (media)" if self.media else "",
+                         "6" if self.ipv6 else "4",
+                         self.mode.__name__,
+                )
                 break
         else:
             log.warning("Connection failed! Trying again...")
