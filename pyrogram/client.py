@@ -369,6 +369,12 @@ class Client(Methods):
         self.media_sessions = {}
         self.media_sessions_lock = asyncio.Lock()
 
+        # Persistent pool of media sessions per DC used for uploads. Kept
+        # alive between save_file() calls to avoid connection churn while
+        # still allowing several parallel TCP connections per data center.
+        self.upload_sessions = {}
+        self.upload_sessions_lock = asyncio.Lock()
+
         self.save_file_semaphore = asyncio.Semaphore(self.max_concurrent_transmissions)
         self.get_file_semaphore = asyncio.Semaphore(self.max_concurrent_transmissions)
 

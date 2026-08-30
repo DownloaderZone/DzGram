@@ -30,9 +30,42 @@ from typing import Union, Callable, Optional
 import pyrogram
 from pyrogram import StopTransmission
 from pyrogram import raw
-from pyrogram.session import Session
+from pyrogram.session import Auth, Session
 
 log = logging.getLogger(__name__)
+
+# Number of parallel media sessions (TCP connections) kept per data center to
+# spread upload chunks over. A single connection can become the bottleneck,
+# especially when several large files are being leeched at once.
+UPLOAD_SESSION_POOL_SIZE = 3
+
+
+async def get_upload_sessions(client: "pyrogram.Client", dc_id: int, count: int):
+    """Return a persistent pool of media sessions for ``dc_id``.
+
+    Sessions are created lazily and cached on the client, so uploads reuse
+    the same connections instead of opening/tearing down sessions per file.
+    """
+    async with client.upload_sessions_lock:
+        sessions = client.upload_sessions.get(dc_id)
+
+        if sessions is None:
+            sessions = client.upload_sessions[dc_id] = []
+
+        while len(sessions) < count:
+            session = Session(
+                client,
+                dc_id,
+                await Auth(client, dc_id, await client.storage.test_mode()).create()
+                if dc_id != await client.storage.dc_id()
+                else await client.storage.auth_key(),
+                await client.storage.test_mode(),
+                is_media=True,
+            )
+            await session.start()
+            sessions.append(session)
+
+        return sessions
 
 
 class SaveFile:
@@ -141,26 +174,24 @@ class SaveFile:
 
             file_total_parts = int(math.ceil(file_size / part_size))
             is_big = file_size > 10 * 1024 * 1024
-            workers_count = 4 if is_big else 1
+            workers_count = self.upload_workers if is_big else 1
             is_missing_part = file_id is not None
             file_id = file_id or self.rnd_id()
             md5_sum = md5() if not is_big and not is_missing_part else None
 
             dc_id = await self.storage.dc_id()
 
-            session = self.media_sessions.get(dc_id)
-            if not session:
-                session = self.media_sessions[dc_id] = Session(
-                    self, dc_id,
-                    await Auth(self, dc_id, await self.storage.test_mode()).create()
-                    if dc_id != await self.storage.dc_id()
-                    else await self.storage.auth_key(),
-                    await self.storage.test_mode(),
-                    is_media=True
-                )
-                await session.start()
+            pool_size = UPLOAD_SESSION_POOL_SIZE if is_big else 1
+            pool = await get_upload_sessions(self, dc_id, pool_size)
+            pool_size = len(pool)
 
-            workers = [self.loop.create_task(worker(session)) for _ in range(workers_count)]
+            # workers_count worker coroutines per media session, spread across
+            # the pool so each TCP connection carries up to workers_count
+            # in-flight parts.
+            workers = [
+                self.loop.create_task(worker(pool[i % pool_size]))
+                for i in range(workers_count * pool_size)
+            ]
             queue = asyncio.Queue(16)
 
             try:
@@ -226,10 +257,9 @@ class SaveFile:
                 raise
             except Exception as e:
                 log.error(e, exc_info=True)
-                raise
             else:
                 if errors:
-                    raise errors[0]
+                    return None
 
                 if is_big:
                     return raw.types.InputFileBig(

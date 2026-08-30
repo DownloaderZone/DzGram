@@ -52,6 +52,12 @@ class Terminate:
 
         self.media_sessions.clear()
 
+        for upload_sessions in self.upload_sessions.values():
+            for upload_session in upload_sessions:
+                await upload_session.stop()
+
+        self.upload_sessions.clear()
+
         self.updates_watchdog_event.set()
 
         if self.updates_watchdog_task is not None:
