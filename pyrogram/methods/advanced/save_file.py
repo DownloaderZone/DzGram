@@ -148,7 +148,17 @@ class SaveFile:
 
             dc_id = await self.storage.dc_id()
 
-            session = await self.get_session(dc_id, is_media=True)
+            session = self.media_sessions.get(dc_id)
+            if not session:
+                session = self.media_sessions[dc_id] = Session(
+                    self, dc_id,
+                    await Auth(self, dc_id, await self.storage.test_mode()).create()
+                    if dc_id != await self.storage.dc_id()
+                    else await self.storage.auth_key(),
+                    await self.storage.test_mode(),
+                    is_media=True
+                )
+                await session.start()
 
             workers = [self.loop.create_task(worker(session)) for _ in range(workers_count)]
             queue = asyncio.Queue(16)
