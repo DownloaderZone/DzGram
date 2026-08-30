@@ -17,7 +17,7 @@
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
 __fork_name__ = "dzgram"
-__version__ = "2.2.31"
+__version__ = "2.2.32"
 __license__ = "GNU Lesser General Public License v3.0 (LGPL-3.0)"
 __copyright__ = "Copyright (C) 2017-present DownloaderZone <https://github.com/DownloaderZone>"
 
