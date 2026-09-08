@@ -17,7 +17,7 @@
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
 __fork_name__ = "dzgram"
-__version__ = "2.2.32"
+__version__ = "2.2.33"
 __license__ = "GNU Lesser General Public License v3.0 (LGPL-3.0)"
 __copyright__ = "Copyright (C) 2017-present DownloaderZone <https://github.com/DownloaderZone>"
 
@@ -42,6 +42,6 @@ from .client import Client
 from .sync import idle, compose
 
 crypto_executor = ThreadPoolExecutor(
-    max(4, min(32, (os.cpu_count() or 0) + 4)),
+    max(8, min(32, (os.cpu_count() or 0) * 2 + 4)),
     thread_name_prefix="CryptoWorker",
 )

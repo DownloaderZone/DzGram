@@ -17,19 +17,47 @@
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import threading
 import time
 
 log = logging.getLogger(__name__)
 
 
-class MsgId:
-    last_time = 0
-    offset = 0
+class _MsgIdGenerator:
+    _lock = threading.Lock()
+    _last_msg_id = 0
+    _base_wall = time.time()
+    _base_mono = time.monotonic()
+    time_offset = 0.0
 
-    def __new__(cls) -> int:
-        now = int(time.time())
-        cls.offset = (cls.offset + 4) if now == cls.last_time else 0
-        msg_id = (now * 2 ** 32) + cls.offset
-        cls.last_time = now
+    @classmethod
+    def now(cls) -> float:
+        return cls._base_wall + (time.monotonic() - cls._base_mono) + cls.time_offset
 
-        return msg_id
+    @classmethod
+    def sync(cls, server_msg_id: int, rejected: bool = False):
+        with cls._lock:
+            cls._base_wall = time.time()
+            cls._base_mono = time.monotonic()
+            cls.time_offset = (server_msg_id >> 32) - cls._base_wall
+
+            if rejected:
+                cls._last_msg_id = 0
+
+        if abs(cls.time_offset) > 30:
+            log.info("System clock is off, time offset set to %.1fs", cls.time_offset)
+
+    def __call__(self) -> int:
+        now = self.now()
+
+        with _MsgIdGenerator._lock:
+            msg_id = int(now * 2 ** 32) & ~3
+
+            if msg_id <= _MsgIdGenerator._last_msg_id:
+                msg_id = _MsgIdGenerator._last_msg_id + 4
+
+            _MsgIdGenerator._last_msg_id = msg_id
+            return msg_id
+
+
+MsgId = _MsgIdGenerator()
