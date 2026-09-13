@@ -81,8 +81,8 @@ class RichMessageButton(Object):
         self.disabled = disabled
 
     @staticmethod
-    def read(button: "raw.types.RichMessageButton"):
-        raw_style: "raw.types.KeyboardButtonStyle" = button.style
+    def read(button: "raw.base.TLObject"):
+        raw_style = getattr(button, "style", None)
         button_style = None
         icon_custom_emoji_id = None
 
@@ -100,36 +100,21 @@ class RichMessageButton(Object):
 
         return RichMessageButton(
             text=button.text,
-            callback_data=button.callback_data,
-            url=button.url,
-            web_app=types.WebAppInfo(url=button.web_app.url) if button.web_app else None,
-            login_url=types.LoginUrl.read(button.login_url) if button.login_url else None,
-            copy_text=types.CopyTextButton(text=button.copy_text) if button.copy_text else None,
             style=button_style,
             icon_custom_emoji_id=icon_custom_emoji_id,
-            disabled=button.disabled or None,
         )
 
     async def write(self, client: "pyrogram.Client"):
-        raw_style = None
-
-        if self.style is not None:
-            raw_style = raw.types.KeyboardButtonStyle(
-                bg_primary=self.style == enums.ButtonStyle.PRIMARY,
-                bg_danger=self.style == enums.ButtonStyle.DANGER,
-                bg_success=self.style == enums.ButtonStyle.SUCCESS,
-                icon=int(self.icon_custom_emoji_id) if self.icon_custom_emoji_id else None,
-            )
-
-        return raw.types.RichMessageButton(
+        button = types.InlineKeyboardButton(
             text=self.text,
+            icon_custom_emoji_id=self.icon_custom_emoji_id,
+            style=self.style,
             callback_data=self.callback_data,
             url=self.url,
-            web_app=raw.types.DataJSON(data=self.web_app.url) if self.web_app else None,
-            login_url=await self.login_url.write(
-                bot=await client.resolve_peer(self.login_url.bot_username or "self"),
-            ) if self.login_url else None,
-            copy_text=self.copy_text.text if self.copy_text else None,
-            style=raw_style,
-            disabled=self.disabled or False,
+            web_app=self.web_app,
+            login_url=self.login_url,
+            copy_text=self.copy_text,
+            disabled=self.disabled,
         )
+
+        return await button.write(client)

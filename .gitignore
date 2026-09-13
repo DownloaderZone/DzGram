@@ -126,3 +126,10 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+# local live-test harness (never commit credentials)
+/test_live.py
+/test_premium_user.py
+/.env
+/sessions/
+
+test_live.py

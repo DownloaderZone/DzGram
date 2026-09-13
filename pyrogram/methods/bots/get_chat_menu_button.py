@@ -55,6 +55,9 @@ class GetChatMenuButton:
                 )
             )).full_user.bot_info.menu_button
 
+        if r is None:
+            return types.MenuButtonDefault()
+
         if isinstance(r, raw.types.BotMenuButtonCommands):
             return types.MenuButtonCommands()
 

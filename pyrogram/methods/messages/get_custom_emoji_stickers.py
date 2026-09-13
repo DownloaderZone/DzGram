@@ -45,6 +45,9 @@ class GetCustomEmojiStickers:
 
         stickers = []
         for item in result:
+            if isinstance(item, raw.types.DocumentEmpty):
+                continue
+
             attributes = {type(i): i for i in item.attributes}
             sticker = await types.Sticker._parse(self, item, attributes)
             stickers.append(sticker)
