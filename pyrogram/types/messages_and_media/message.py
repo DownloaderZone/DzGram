@@ -1179,9 +1179,9 @@ class Message(Object, Update):
             elif isinstance(action, raw.types.MessageActionManagedBotCreated):
                 service_type = enums.MessageServiceType.MANAGED_BOT_CREATED
                 managed_bot_created = types.ManagedBotCreated._parse(client, action, users)
-            elif isinstance(action, raw.types.MessageActionCommunityChatJoined):
+            elif isinstance(action, raw.types.CommunityChatJoined):
                 service_type = enums.MessageServiceType.COMMUNITY_CHAT_JOINED
-                community_chat_joined = types.CommunityChatJoined._parse(client, message)
+                community_chat_joined = types.CommunityChatJoined._parse(client, action, chats)
 
             parsed_message = Message(
                 id=message.id,

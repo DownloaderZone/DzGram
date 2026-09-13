@@ -39,10 +39,10 @@ class CommunityChatJoined(Object):
     @staticmethod
     def _parse(
         client: "pyrogram.Client",
-        action: "raw.types.MessageActionChatJoinedByRequest",
+        action: "raw.types.CommunityChatJoined",
         users: Dict[int, "raw.base.User"] = {},
         chats: Dict[int, "raw.base.Chat"] = {},
     ) -> "CommunityChatJoined":
         return CommunityChatJoined(
-            chat=types.Chat._parse_chat(client, chats[action.chat_id]) if action.chat_id in chats else None,
+            chat=types.Chat._parse_chat(client, chats[action.chat.id]) if action.chat and action.chat.id in chats else None,
         )
