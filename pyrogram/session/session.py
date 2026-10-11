@@ -839,7 +839,7 @@ class Session:
         except AttributeError:
             client_threshold = None
 
-        if client_threshold is not None:
+        if client_threshold is not None and sleep_threshold != 0:
             sleep_threshold = max(sleep_threshold, client_threshold)
 
         slept = 0.0

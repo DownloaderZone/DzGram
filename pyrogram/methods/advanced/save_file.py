@@ -31,6 +31,8 @@ from typing import Union, Callable, Optional
 import pyrogram
 from pyrogram import StopTransmission
 from pyrogram import raw
+from pyrogram.errors import FloodWait, FloodPremiumWait
+from pyrogram.methods.rate_limiter import AdaptiveBucket
 from pyrogram.session import Auth, Session
 
 log = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ READ_BUFFER = 4 * 1024 * 1024
 MAX_BATCH = 4 * 1024 * 1024
 STALL_TIMEOUT = 900
 UPLOAD_MEDIA_TIMEOUT = 60
+MAX_FLOOD_WAITS = Session.MAX_RETRIES
 
 
 async def _stop_upload_workers(queue: asyncio.Queue, workers: list) -> list:
@@ -86,7 +89,7 @@ async def get_upload_sessions(client: "pyrogram.Client", dc_id: int, count: int)
                     *(_create_upload_session(client, dc_id) for _ in range(batch))
                 )
             )
-        return sessions
+        return sessions[:count]
 
 
 class SaveFile:
@@ -106,7 +109,24 @@ class SaveFile:
             errors = []
 
             async def _send_part(session, data):
-                await session.invoke(data, timeout=UPLOAD_MEDIA_TIMEOUT)
+                slept = 0
+                while True:
+                    try:
+                        accepted = await session.invoke(
+                            data, timeout=UPLOAD_MEDIA_TIMEOUT, sleep_threshold=0
+                        )
+                        if not accepted:
+                            raise OSError("Upload part not accepted by the server")
+                        _pacer.on_success()
+                        return
+                    except (FloodWait, FloodPremiumWait) as e:
+                        if e.value > self.sleep_threshold >= 0:
+                            raise
+                        slept += e.value
+                        if self.sleep_threshold >= 0 and slept > self.sleep_threshold * MAX_FLOOD_WAITS:
+                            raise
+                        _pacer.on_flood()
+                        await asyncio.sleep(e.value)
 
             async def worker(session):
                 while True:
@@ -124,6 +144,7 @@ class SaveFile:
                         errors.append(e)
                         return
                     finally:
+                        data = None
                         budget.release()
 
             async def read_batch():
@@ -159,15 +180,17 @@ class SaveFile:
             is_big = file_size > 10 * 1024 * 1024
             if is_bot:
                 rate_limit = int(os.environ.get("DZGRAM_BOT_UPLOAD_RATE", 100))
-                pool_size = min(12, POOL_SIZE) if is_big else 1
+                pool_size = min(int(os.environ.get("DZGRAM_BOT_UPLOAD_POOL", 8)), POOL_SIZE)
             elif is_premium:
                 rate_limit = int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_RATE", 300))
-                pool_size = min(14, POOL_SIZE) if is_big else 1
+                pool_size = min(int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_POOL", 14)), POOL_SIZE)
             else:
                 rate_limit = int(os.environ.get("DZGRAM_UPLOAD_RATE", 50))
-                pool_size = min(12, POOL_SIZE) if is_big else 1
+                pool_size = min(int(os.environ.get("DZGRAM_UPLOAD_POOL", 12)), POOL_SIZE)
 
             is_missing_part = file_id is not None
+            pool_cap = 1 if is_missing_part else max(1, math.ceil((file_total_parts - file_part) / 2))
+            pool_size = max(1, min(pool_size, pool_cap))
             file_id = file_id or self.rnd_id()
             md5_sum = md5() if not is_big and not is_missing_part else None
 
@@ -184,13 +207,16 @@ class SaveFile:
                 for i in range(n_workers)
             ]
             next_batch_task = None
-            _next_dispatch = 0.0
-            _dispatch_interval = 1.0 / rate_limit
+            _pacer = AdaptiveBucket(rate=rate_limit, ceiling=max(rate_limit, 300), burst=16, step=1.0)
+            _paced = is_bot or not is_premium
             _stalled_since = 0.0
+            _last_reported = -1
 
             async def _report(parts: int) -> None:
-                if not progress:
+                nonlocal _last_reported
+                if not progress or parts == _last_reported:
                     return
+                _last_reported = parts
                 func = functools.partial(progress, min(parts * part_size, file_size), file_size, *progress_args)
                 try:
                     if inspect.iscoroutinefunction(progress):
@@ -203,6 +229,8 @@ class SaveFile:
                     log.warning(f"Upload progress callback error: {e}")
 
             async def _check_workers():
+                if errors:
+                    raise errors[0]
                 for t in workers:
                     if t.done() and not t.cancelled():
                         exc = t.exception()
@@ -240,10 +268,8 @@ class SaveFile:
                                 file_id=file_id, file_part=file_part, bytes=chunk
                             )
 
-                        _now = time.monotonic()
-                        if _now < _next_dispatch:
-                            await asyncio.sleep(_next_dispatch - _now)
-                        _next_dispatch = max(time.monotonic(), _next_dispatch) + _dispatch_interval
+                        if _paced:
+                            await _pacer.acquire()
 
                         await budget.acquire()
 

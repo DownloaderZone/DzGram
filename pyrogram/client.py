@@ -53,6 +53,7 @@ from pyrogram.errors import (
 )
 from pyrogram.handlers.handler import Handler
 from pyrogram.methods import Methods
+from pyrogram.methods.rate_limiter import AdaptiveBucket
 from pyrogram.session import Auth, Session
 from pyrogram.storage import SQLiteStorage, Storage
 from pyrogram.types import User, TermsOfService
@@ -1460,7 +1461,7 @@ class Client(Methods):
                     self.media_pool_reaper_event.clear()
                     self.media_pool_reaper_task = running.create_task(self.media_pool_reaper())
 
-            return list(pool)
+            return list(pool[:n])
 
     async def get_dc_option(
         self,
@@ -1606,10 +1607,17 @@ class Client(Methods):
             chunk_size = 1024 * 1024
             offset_bytes = abs(offset) * chunk_size
             _last_progress_time = 0.0
+            _last_reported = -1
 
             async def _report(sent: int) -> None:
+                nonlocal _last_reported
                 if not progress:
                     return
+
+                sent = min(sent, file_size) if file_size else sent
+                if sent == _last_reported:
+                    return
+                _last_reported = sent
 
                 func = functools.partial(
                     progress,
@@ -1635,32 +1643,33 @@ class Client(Methods):
                 _is_premium = self.me.is_premium if hasattr(self.me, 'is_premium') else False
 
                 if _is_bot:
-                    dl_pool_size = 4
-                    dl_workers_per_session = 4
+                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_BOT_DL_POOL", 5)))
+                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_BOT_DL_WORKERS", 3)))
                     dl_rate = int(os.environ.get("DZGRAM_BOT_DL_RATE", 30))
                     dl_burst = 15
                 elif _is_premium:
-                    dl_pool_size = 3
-                    dl_workers_per_session = 6
+                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_POOL", 6)))
+                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_WORKERS", 4)))
                     dl_rate = int(os.environ.get("DZGRAM_PREMIUM_DL_RATE", 100))
                     dl_burst = 50
                 else:
-                    dl_pool_size = 3
-                    dl_workers_per_session = 4
+                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_DL_POOL", 5)))
+                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_DL_WORKERS", 3)))
                     dl_rate = int(os.environ.get("DZGRAM_DL_RATE", 30))
                     dl_burst = 15
 
-                total_chunks = math.ceil((file_size - offset_bytes) / chunk_size)
+                total_chunks = min(total, max(0, math.ceil((file_size - offset_bytes) / chunk_size)))
                 pool_size = min(dl_pool_size, total_chunks)
                 total_workers = min(dl_pool_size * dl_workers_per_session, total_chunks)
                 needs_pool = min(total, total_chunks) > 1
-                if needs_pool:
+                _fake = self.media_sessions.get(dc_id)
+                use_fake = _fake is not None and not isinstance(_fake, Session)
+                if needs_pool and not use_fake:
                     pool_task = asyncio.ensure_future(self._get_media_session_pool(dc_id, pool_size))
                     pool_task.add_done_callback(lambda t: t.cancelled() or t.exception())
 
                 # Test hook: allow FakeMediaSession injection via media_sessions
-                _fake = self.media_sessions.get(dc_id)
-                if _fake is not None and not isinstance(_fake, Session):
+                if use_fake:
                     session = _fake
                     use_fake = True
                 else:
@@ -1809,12 +1818,11 @@ class Client(Methods):
                         _write_fd = _write_file.fileno()
                     _done_count = 0
                     _total_chunks = chunks_needed
-                    _getfile_rate = TokenBucket(rate=dl_rate, burst=dl_burst)
-                    _last_rate_adj = 0.0
-                    _fast_window = 0
+                    _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 150), burst=dl_burst)
+                    _paced = _is_bot or not _is_premium
 
                     async def _worker(session):
-                        nonlocal _done_count, _last_rate_adj, _fast_window
+                        nonlocal _done_count
                         while True:
                             await buffer_slots.acquire()
 
@@ -1825,24 +1833,32 @@ class Client(Methods):
                                 return
 
                             try:
-                                await _getfile_rate.acquire()
-                                t0 = time.monotonic()
-                                r = await session.invoke(
-                                    raw.functions.upload.GetFile(
-                                        location=location,
-                                        offset=offset,
-                                        limit=chunk_size,
-                                    ),
-                                    timeout=Session.MEDIA_WAIT_TIMEOUT,
-                                    sleep_threshold=30,
-                                )
+                                slept = 0
+                                while True:
+                                    if _paced:
+                                        await _getfile_rate.acquire()
+                                    try:
+                                        r = await session.invoke(
+                                            raw.functions.upload.GetFile(
+                                                location=location, offset=offset, limit=chunk_size,
+                                            ),
+                                            timeout=Session.MEDIA_WAIT_TIMEOUT,
+                                            sleep_threshold=0,
+                                        )
+                                        break
+                                    except (FloodWait, FloodPremiumWait) as e:
+                                        if e.value > 30 or slept + e.value > 30 * Session.MAX_RETRIES:
+                                            raise
+                                        slept += e.value
+                                        _getfile_rate.on_flood()
+                                        await asyncio.sleep(e.value)
                             except BaseException:
                                 buffer_slots.release()
                                 raise
 
                             chunk_data = r.bytes
                             r = None
-                            t1 = time.monotonic()
+                            _getfile_rate.on_success()
 
                             if _write_mode:
                                 write_at(_write_fd, chunk_data, offset)
@@ -1858,21 +1874,6 @@ class Client(Methods):
 
                             if chunk_len < chunk_size:
                                 return
-
-                            elapsed = t1 - t0
-                            now = t1
-                            if elapsed > 2.0 and now - _last_rate_adj > 0.5:
-                                _last_rate_adj = now
-                                _fast_window = 0
-                                _getfile_rate.rate = max(_getfile_rate.rate * 0.8, 3.0)
-                            elif elapsed < 0.5:
-                                _fast_window += 1
-                                if _fast_window >= 5 and now - _last_rate_adj > 0.5:
-                                    _last_rate_adj = now
-                                    _getfile_rate.rate = min(_getfile_rate.rate + 2.0, dl_rate)
-                                    _fast_window = 0
-                            else:
-                                _fast_window = 0
 
                     tasks = [
                         asyncio.ensure_future(_worker(pool[i % n_sessions]))
@@ -1934,6 +1935,7 @@ class Client(Methods):
                         for t in tasks:
                             if not t.done():
                                 t.cancel()
+                        await asyncio.gather(*tasks, return_exceptions=True)
                         buffer_slots.release_all()
 
                 elif isinstance(r, raw.types.upload.FileCdnRedirect):
@@ -1946,7 +1948,8 @@ class Client(Methods):
 
                     try:
                         while True:
-                            await _cdn_rate.acquire()
+                            if _is_bot or not _is_premium:
+                                await _cdn_rate.acquire()
                             r2 = await cdn_session.invoke(
                                 raw.functions.upload.GetCdnFile(
                                     file_token=r.file_token,

@@ -3,6 +3,8 @@ import io
 import math
 import os
 import random
+from hashlib import md5
+from types import SimpleNamespace
 
 import pytest
 
@@ -72,6 +74,7 @@ class FakeUploadSession:
         self.max_inflight = 0
         self._inflight = 0
         self.fail_on = None
+        self.delay = None
 
     async def start(self):
         pass
@@ -95,7 +98,7 @@ class FakeUploadSession:
             self.invoked.append(data.file_part)
 
             # Force overlapping in-flight parts.
-            await asyncio.sleep(random.random() * 0.002)
+            await asyncio.sleep(self.delay if self.delay is not None else random.random() * 0.002)
             return True
         finally:
             self._inflight -= 1
@@ -261,6 +264,8 @@ class TestParallelUpload:
         data = os.urandom(12 * MB + 123)
         sessions = [FakeUploadSession() for _ in range(3)]
         created = self._patch_sessions(client, monkeypatch, sessions)
+        for session in created:
+            session.delay = 0.05
 
         fp = io.BytesIO(data)
         fp.name = "test.bin"
@@ -272,13 +277,9 @@ class TestParallelUpload:
 
         all_parts = sorted(p for s in created for p in s.invoked)
         assert all_parts == list(range(len(all_parts)))
-        # With paced dispatch Fake sessions complete in ~2ms,
-        # so pacing (20ms/ part for default tier) serializes dispatch and
-        # max_inflight stays 1 in the synthetic test. In production the
-        # network RTT dominates, so 12×2 workers are concurrent. Accept 1 here
-        # but ensure multiple sessions were actually used.
+        # Burst dispatch should overlap requests even on a low-latency link.
         assert len(created) > 1
-        assert max(s.max_inflight for s in created) >= 1
+        assert max(s.max_inflight for s in created) > 1
 
     async def test_upload_progress(self, make_client, monkeypatch):
         client = make_client()
@@ -293,10 +294,35 @@ class TestParallelUpload:
             fp, progress=lambda current, total: calls.append((current, total))
         )
 
-        # Reports per-acked part; initial paced dispatch may add one
-        # extra 0-progress report, so allow >= ceil instead of == ceil.
-        assert len(calls) >= math.ceil(len(data) / PART_SIZE)
+        # Concurrent acknowledgements can be grouped into one progress report.
+        assert 1 <= len(calls) <= math.ceil(len(data) / PART_SIZE) + 1
+        assert all(a[0] < b[0] for a, b in zip(calls, calls[1:]))
         assert calls[-1] == (len(data), len(data))
+
+    async def test_small_upload_uses_size_capped_pool(self, make_client, monkeypatch):
+        client = make_client()
+        data = b"x" * (3 * PART_SIZE)
+        created = self._patch_sessions(client, monkeypatch, [FakeUploadSession()])
+        result = await client.save_file(io.BytesIO(data))
+
+        assert len(created) == 2
+        assert result.md5_checksum == md5(data).hexdigest()
+        assert sorted(p for s in created for p in s.invoked) == [0, 1, 2]
+
+        await client.save_file(io.BytesIO(b"thumbnail"))
+        assert len(created) == 2  # Reuse the pool without growing it.
+
+    async def test_premium_upload_skips_pacer(self, make_client, monkeypatch):
+        client = make_client()
+        client.me = SimpleNamespace(is_bot=False, is_premium=True)
+        self._patch_sessions(client, monkeypatch, [FakeUploadSession()])
+
+        async def unexpected_pacing(*args):
+            raise AssertionError("Premium uploads must not wait for pacing tokens")
+
+        monkeypatch.setattr("pyrogram.methods.rate_limiter.AdaptiveBucket.acquire", unexpected_pacing)
+        result = await client.save_file(io.BytesIO(b"x" * (20 * PART_SIZE)))
+        assert result.parts == 20
 
     async def test_upload_worker_failure(self, make_client, monkeypatch):
         client = make_client()

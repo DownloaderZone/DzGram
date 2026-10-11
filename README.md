@@ -60,6 +60,21 @@ identity (bot API alternative) using Python.
 pip3 install dzgram
 ```
 
+### Transfer performance
+
+Uploads use reusable, size-capped connection pools and burst dispatch. User and
+bot transfers adapt their request rate on successful parts and Telegram flood
+waits; Premium transfers skip client-side pacing while still respecting flood
+waits. Progress callbacks are called when the completed byte count changes.
+
+Connection counts can be tuned before starting your client:
+
+| Account | Upload pool | Download pool | Download workers per connection |
+| --- | --- | --- | --- |
+| User | `DZGRAM_UPLOAD_POOL` (12) | `DZGRAM_DL_POOL` (5) | `DZGRAM_DL_WORKERS` (3) |
+| Bot | `DZGRAM_BOT_UPLOAD_POOL` (8) | `DZGRAM_BOT_DL_POOL` (5) | `DZGRAM_BOT_DL_WORKERS` (3) |
+| Premium | `DZGRAM_PREMIUM_UPLOAD_POOL` (14) | `DZGRAM_PREMIUM_DL_POOL` (6) | `DZGRAM_PREMIUM_DL_WORKERS` (4) |
+
 ### Resources
 
 - Check out [the docs](https://downloaderzone.github.io/DzGram/) (source in [`docs/`](docs/)) to learn more about
