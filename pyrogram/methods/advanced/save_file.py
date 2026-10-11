@@ -81,6 +81,8 @@ async def _create_upload_session(client: "pyrogram.Client", dc_id: int):
 
 
 async def get_upload_sessions(client: "pyrogram.Client", dc_id: int, count: int):
+    if getattr(getattr(client, "me", None), "is_bot", False):
+        return await client._get_media_session_pool(dc_id, count)
     async with client.upload_sessions_lock:
         sessions = client.upload_sessions.get(dc_id)
         if sessions is None:
@@ -115,6 +117,8 @@ class SaveFile:
                 slept = 0
                 while True:
                     try:
+                        if _paced:
+                            await _pacer.acquire()
                         accepted = await session.invoke(
                             data, timeout=UPLOAD_MEDIA_TIMEOUT, sleep_threshold=0
                         )
@@ -129,6 +133,8 @@ class SaveFile:
                         if self.sleep_threshold >= 0 and slept > self.sleep_threshold * MAX_FLOOD_WAITS:
                             raise
                         _pacer.on_flood()
+                        if is_bot:
+                            _pacer.pause(e.value)
                         await asyncio.sleep(e.value)
 
             async def worker(session):
@@ -182,7 +188,7 @@ class SaveFile:
             file_total_parts = int(math.ceil(file_size / part_size))
             is_big = file_size > 10 * 1024 * 1024
             if is_bot:
-                rate_limit = int(os.environ.get("DZGRAM_BOT_UPLOAD_RATE", 100))
+                rate_limit = int(os.environ.get("DZGRAM_BOT_UPLOAD_RATE", 32))
                 pool_size = min(int(os.environ.get("DZGRAM_BOT_UPLOAD_POOL", 8)), POOL_SIZE)
             elif is_premium:
                 rate_limit = int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_RATE", 300))
@@ -270,9 +276,6 @@ class SaveFile:
                             rpc = raw.functions.upload.SaveFilePart(
                                 file_id=file_id, file_part=file_part, bytes=chunk
                             )
-
-                        if _paced:
-                            await _pacer.acquire()
 
                         await budget.acquire()
 

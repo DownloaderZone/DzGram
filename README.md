@@ -66,9 +66,13 @@ Uploads use reusable, size-capped connection pools and burst dispatch. User and
 bot transfers adapt their request rate on successful parts and Telegram flood
 waits; Premium transfers skip client-side pacing while still respecting flood
 waits. Progress callbacks are called when the completed byte count changes.
-Premium downloads prefetch the first parallel wave while the initial chunk is
+Bot and Premium downloads prefetch the first parallel wave while the initial chunk is
 in flight. Transfer connections use Telegram's advertised media endpoints, and
 TCP receive buffers assemble fragmented packets without repeatedly copying them.
+Bot uploads reuse the download connection pool. Bot pacing starts at 32 upload
+parts/second and 16 download chunks/second, increases on success, and applies
+Telegram flood cooldowns across the transfer's workers. Override the starting
+rates with `DZGRAM_BOT_UPLOAD_RATE` and `DZGRAM_BOT_DL_RATE`.
 
 Connection counts can be tuned before starting your client:
 

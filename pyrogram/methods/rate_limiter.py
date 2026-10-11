@@ -38,6 +38,7 @@ class TokenBucket:
         self._last_refill = time.monotonic()
         self._lock = asyncio.Lock()
         self._total_taken = 0
+        self._paused_until = 0.0
 
     @property
     def rate(self) -> float:
@@ -55,7 +56,7 @@ class TokenBucket:
 
     def _refill(self):
         now = time.monotonic()
-        elapsed = now - self._last_refill
+        elapsed = max(0.0, now - max(self._last_refill, self._paused_until))
         self._tokens = min(self._burst, self._tokens + elapsed * self._rate)
         self._last_refill = now
 
@@ -81,6 +82,10 @@ class TokenBucket:
         # is also what makes admission first-come-first-served.
         async with self._lock:
             while True:
+                remaining = self._paused_until - time.monotonic()
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
+                    continue
                 self._refill()
 
                 if self._tokens >= tokens:
@@ -121,6 +126,12 @@ class AdaptiveBucket(TokenBucket):
             self._last_down = now
             self._last_up = now
             self.rate = max(self.rate * self._backoff, self._floor)
+
+    def pause(self, seconds: float):
+        """Apply a server cooldown to all workers sharing this bucket."""
+        self._paused_until = max(self._paused_until, time.monotonic() + seconds)
+        self._tokens = 0.0
+        self._last_refill = self._paused_until
 
 
 class RateLimiter:

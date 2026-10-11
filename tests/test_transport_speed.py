@@ -80,9 +80,10 @@ async def test_direct_tcp_fragmented_packet():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("delayed_pool", [False, True])
 @pytest.mark.parametrize("disk", [False, True])
-async def test_premium_prefetch_overlaps_first_chunk_and_preserves_offsets(delayed_pool, disk, tmp_path):
+@pytest.mark.parametrize("bot", [False, True])
+async def test_prefetch_overlaps_first_chunk_and_preserves_offsets(delayed_pool, disk, tmp_path, bot):
     client = Client("prefetch", api_id=1, api_hash="test")
-    client.me = SimpleNamespace(is_bot=False, is_premium=True)
+    client.me = SimpleNamespace(is_bot=bot, is_premium=not bot)
     first_started = asyncio.Event()
     second_started = asyncio.Event()
     first_done = asyncio.Event()
@@ -135,9 +136,10 @@ async def test_premium_prefetch_overlaps_first_chunk_and_preserves_offsets(delay
 
 
 @pytest.mark.asyncio
-async def test_premium_prefetch_cancelled_on_early_close():
+@pytest.mark.parametrize("bot", [False, True])
+async def test_prefetch_cancelled_on_early_close(bot):
     client = Client("prefetch_close", api_id=1, api_hash="test")
-    client.me = SimpleNamespace(is_bot=False, is_premium=True)
+    client.me = SimpleNamespace(is_bot=bot, is_premium=not bot)
     started = asyncio.Event()
     cancelled = asyncio.Event()
 

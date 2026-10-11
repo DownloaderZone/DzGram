@@ -1432,6 +1432,7 @@ class Client(Methods):
 
             for session in self.media_session_pools.get(dc_id, []):
                 if session.is_connected.is_set() or session.is_restarting:
+                    session.last_used = time.monotonic()
                     pool.append(session)
                 else:
                     try:
@@ -1651,8 +1652,8 @@ class Client(Methods):
                 if _is_bot:
                     dl_pool_size = max(1, int(os.environ.get("DZGRAM_BOT_DL_POOL", 5)))
                     dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_BOT_DL_WORKERS", 3)))
-                    dl_rate = int(os.environ.get("DZGRAM_BOT_DL_RATE", 30))
-                    dl_burst = 15
+                    dl_rate = int(os.environ.get("DZGRAM_BOT_DL_RATE", 16))
+                    dl_burst = 8
                 elif _is_premium:
                     dl_pool_size = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_POOL", 6)))
                     dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_WORKERS", 4)))
@@ -1689,7 +1690,31 @@ class Client(Methods):
                 prefetch_budget = ReadAhead(self.read_ahead_slots)
                 prefetch_task = None
                 prefetch_offset = offset_bytes
-                if needs_pool and not use_fake and _is_premium:
+                _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 150), burst=dl_burst)
+                _paced = _is_bot or not _is_premium
+
+                async def fetch_part(media, at):
+                    slept = 0
+                    while True:
+                        if _paced:
+                            await _getfile_rate.acquire()
+                        try:
+                            result = await media.invoke(
+                                raw.functions.upload.GetFile(location=location, offset=at, limit=chunk_size),
+                                timeout=Session.MEDIA_WAIT_TIMEOUT, sleep_threshold=0,
+                            )
+                            _getfile_rate.on_success()
+                            return result
+                        except (FloodWait, FloodPremiumWait) as e:
+                            if e.value > 30 or slept + e.value > 30 * Session.MAX_RETRIES:
+                                raise
+                            slept += e.value
+                            _getfile_rate.on_flood()
+                            if _is_bot:
+                                _getfile_rate.pause(e.value)
+                            await asyncio.sleep(e.value)
+
+                if needs_pool and not use_fake and (_is_premium or _is_bot):
                     async def prefetch():
                         pool = await pool_task
                         count = min(total_chunks - 1, len(pool) * dl_workers_per_session)
@@ -1697,10 +1722,7 @@ class Client(Methods):
                             at = prefetch_offset + (i + 1) * chunk_size
                             async def fetch_ahead(at=at, media=pool[i % len(pool)]):
                                 await prefetch_budget.acquire()
-                                return await media.invoke(
-                                    raw.functions.upload.GetFile(location=location, offset=at, limit=chunk_size),
-                                    timeout=Session.MEDIA_WAIT_TIMEOUT, sleep_threshold=30,
-                                )
+                                return await fetch_part(media, at)
                             prefetched[at] = self.loop.create_task(fetch_ahead())
                     prefetch_task = self.loop.create_task(prefetch())
 
@@ -1869,8 +1891,6 @@ class Client(Methods):
                         _write_fd = _write_file.fileno()
                     _done_count = 0
                     _total_chunks = chunks_needed
-                    _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 150), burst=dl_burst)
-                    _paced = _is_bot or not _is_premium
 
                     async def _worker(session):
                         nonlocal _done_count
@@ -1889,32 +1909,14 @@ class Client(Methods):
                             await buffer_slots.acquire()
 
                             try:
-                                slept = 0
-                                while ahead is None:
-                                    if _paced:
-                                        await _getfile_rate.acquire()
-                                    try:
-                                        r = await session.invoke(
-                                            raw.functions.upload.GetFile(
-                                                location=location, offset=offset, limit=chunk_size,
-                                            ),
-                                            timeout=Session.MEDIA_WAIT_TIMEOUT,
-                                            sleep_threshold=0,
-                                        )
-                                        break
-                                    except (FloodWait, FloodPremiumWait) as e:
-                                        if e.value > 30 or slept + e.value > 30 * Session.MAX_RETRIES:
-                                            raise
-                                        slept += e.value
-                                        _getfile_rate.on_flood()
-                                        await asyncio.sleep(e.value)
+                                if ahead is None:
+                                    r = await fetch_part(session, offset)
                             except BaseException:
                                 buffer_slots.release()
                                 raise
 
                             chunk_data = r.bytes
                             r = None
-                            _getfile_rate.on_success()
 
                             if _write_mode:
                                 write_at(_write_fd, chunk_data, offset)
