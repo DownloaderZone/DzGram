@@ -46,13 +46,16 @@ class Connection:
         media: bool = False,
         mode: int = 1,
         loop: Optional[asyncio.AbstractEventLoop] = None,
+        server_address: Optional[str] = None,
+        port: Optional[int] = None,
     ):
         self.dc_id = dc_id
         self.test_mode = test_mode
         self.ipv6 = ipv6
         self.proxy = proxy
         self.media = media
-        self.address = DataCenter(dc_id, test_mode, ipv6, media)
+        default_address = DataCenter(dc_id, test_mode, ipv6, media) if not server_address or port is None else (server_address, port)
+        self.address = (server_address or default_address[0], port if port is not None else default_address[1])
         self.mode = self.MODES.get(mode, TCPAbridged)
 
         self.protocol: Optional[TCP] = None

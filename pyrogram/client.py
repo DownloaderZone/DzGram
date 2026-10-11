@@ -1377,15 +1377,17 @@ class Client(Methods):
                 else:
                     auth_key = await self.storage.auth_key()
 
+            option = await self.get_dc_option(dc_id, is_media=is_media, is_cdn=is_cdn, ipv6=self.ipv6)
             session = Session(
                 self, dc_id, auth_key, await self.storage.test_mode(),
                 is_media=is_media, is_cdn=is_cdn,
+                server_address=option.ip_address, port=option.port,
             )
 
             async with self._session_creation_gate:
                 await session.start(max_attempts=Session.MAX_RETRIES)
 
-            if not is_current_dc and (is_media or not is_media) and not is_cdn:
+            if not is_current_dc and not is_media and not is_cdn:
                 # Export authorization for brand-new DCs (media sessions on a
                 # foreign DC share the main DC auth key and still need it).
                 for _ in range(3):
@@ -1415,8 +1417,10 @@ class Client(Methods):
             return session
 
     async def _make_media_session(self, dc_id: int, auth_key: bytes) -> "Session":
+        option = await self.get_dc_option(dc_id, is_media=True, ipv6=self.ipv6)
         session = Session(
             self, dc_id, auth_key, await self.storage.test_mode(), is_media=True,
+            server_address=option.ip_address, port=option.port,
         )
         await session.start(max_attempts=Session.MAX_RETRIES)
         return session
@@ -1470,12 +1474,14 @@ class Client(Methods):
         is_cdn: bool = False,
         ipv6: bool = False
     ) -> "raw.types.DcOption":
-        config = await self.invoke(raw.functions.help.GetConfig())
+        config = getattr(self, "_dc_config", None)
+        if config is None:
+            config = self._dc_config = await self.invoke(raw.functions.help.GetConfig())
 
         if dc_id is None:
             dc_id = config.this_dc
 
-        options = [dc for dc in config.dc_options if dc.id == dc_id and dc.ipv6 == ipv6]
+        options = [dc for dc in config.dc_options if dc.id == dc_id and bool(dc.ipv6) == ipv6]
 
         if not options:
             raise ValueError(f"DC{dc_id} not found")
@@ -1677,15 +1683,50 @@ class Client(Methods):
                     use_fake = False
                     self.media_sessions[dc_id] = session
 
-                r = await session.invoke(
-                    raw.functions.upload.GetFile(
-                        location=location,
-                        offset=offset_bytes,
-                        limit=chunk_size
-                    ),
-                    timeout=Session.MEDIA_WAIT_TIMEOUT,
-                    sleep_threshold=30
-                )
+                # Issue the first pooled wave while the initial request is in
+                # flight. Keep its memory charged to the shared transfer budget.
+                prefetched = {}
+                prefetch_budget = ReadAhead(self.read_ahead_slots)
+                prefetch_task = None
+                prefetch_offset = offset_bytes
+                if needs_pool and not use_fake and _is_premium:
+                    async def prefetch():
+                        pool = await pool_task
+                        count = min(total_chunks - 1, len(pool) * dl_workers_per_session)
+                        for i in range(count):
+                            at = prefetch_offset + (i + 1) * chunk_size
+                            async def fetch_ahead(at=at, media=pool[i % len(pool)]):
+                                await prefetch_budget.acquire()
+                                return await media.invoke(
+                                    raw.functions.upload.GetFile(location=location, offset=at, limit=chunk_size),
+                                    timeout=Session.MEDIA_WAIT_TIMEOUT, sleep_threshold=30,
+                                )
+                            prefetched[at] = self.loop.create_task(fetch_ahead())
+                    prefetch_task = self.loop.create_task(prefetch())
+
+                async def drop_prefetch():
+                    if prefetch_task is not None:
+                        prefetch_task.cancel()
+                        await asyncio.gather(prefetch_task, return_exceptions=True)
+                    for task in prefetched.values():
+                        task.cancel()
+                    await asyncio.gather(*prefetched.values(), return_exceptions=True)
+                    prefetched.clear()
+                    prefetch_budget.release_all()
+
+                try:
+                    r = await session.invoke(
+                        raw.functions.upload.GetFile(
+                            location=location,
+                            offset=offset_bytes,
+                            limit=chunk_size
+                        ),
+                        timeout=Session.MEDIA_WAIT_TIMEOUT,
+                        sleep_threshold=30
+                    )
+                except BaseException:
+                    await drop_prefetch()
+                    raise
 
                 if use_fake:
                     # Legacy single-session path for injected fakes (tests)
@@ -1750,19 +1791,23 @@ class Client(Methods):
                 if isinstance(r, raw.types.upload.File):
                     first_chunk = r.bytes
                     r = None
-                    yield first_chunk
-                    current += 1
-                    offset_bytes += chunk_size
-                    if _write_file is not None:
-                        _write_file.seek(0)
-                        _write_file.write(first_chunk)
+                    try:
+                        yield first_chunk
+                        current += 1
+                        offset_bytes += chunk_size
+                        if _write_file is not None:
+                            _write_file.seek(0)
+                            _write_file.write(first_chunk)
 
-                    first_len = len(first_chunk)
-                    first_chunk = None
-
-                    await _report(offset_bytes)
+                        first_len = len(first_chunk)
+                        first_chunk = None
+                        await _report(offset_bytes)
+                    except BaseException:
+                        await drop_prefetch()
+                        raise
 
                     if not first_len or first_len < chunk_size or current >= total:
+                        await drop_prefetch()
                         return
 
                     # Sequential fallback when file size is unknown
@@ -1796,7 +1841,13 @@ class Client(Methods):
                     pool_size = min(dl_pool_size, total_chunks)
                     total_workers = min(dl_pool_size * dl_workers_per_session, total_chunks)
                     if needs_pool:
-                        pool = await pool_task
+                        try:
+                            pool = await pool_task
+                            if prefetch_task is not None:
+                                await prefetch_task
+                        except BaseException:
+                            await drop_prefetch()
+                            raise
                     else:
                         pool = []
                     n_sessions = len(pool)
@@ -1824,17 +1875,22 @@ class Client(Methods):
                     async def _worker(session):
                         nonlocal _done_count
                         while True:
-                            await buffer_slots.acquire()
-
                             try:
                                 offset = work.get_nowait()
                             except asyncio.QueueEmpty:
-                                buffer_slots.release()
                                 return
+
+                            ahead = prefetched.pop(offset, None)
+                            if ahead is not None:
+                                try:
+                                    r = await ahead
+                                finally:
+                                    prefetch_budget.release()
+                            await buffer_slots.acquire()
 
                             try:
                                 slept = 0
-                                while True:
+                                while ahead is None:
                                     if _paced:
                                         await _getfile_rate.acquire()
                                     try:
@@ -1937,8 +1993,10 @@ class Client(Methods):
                                 t.cancel()
                         await asyncio.gather(*tasks, return_exceptions=True)
                         buffer_slots.release_all()
+                        await drop_prefetch()
 
                 elif isinstance(r, raw.types.upload.FileCdnRedirect):
+                    await drop_prefetch()
                     cdn_session = await self.get_session(
                         r.dc_id, is_media=True, is_cdn=True, temporary=True
                     )

@@ -19,9 +19,9 @@
 import asyncio
 import ipaddress
 import logging
+import os
 import socket
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 try:
@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 
 class TCP:
     TIMEOUT = 10
+    SOCKET_BUFFER = int(os.environ.get("DZGRAM_SOCKET_BUFFER", 0))
 
     def __init__(self, ipv6: bool, proxy: dict, loop: Optional[asyncio.AbstractEventLoop] = None):
         self.socket = None
@@ -49,6 +50,7 @@ class TCP:
         self.writer: Optional[asyncio.StreamWriter] = None
 
         self.lock = asyncio.Lock()
+        self.proxy = proxy
 
         if isinstance(loop, asyncio.AbstractEventLoop):
             self.loop = loop
@@ -89,6 +91,11 @@ class TCP:
     def _enable_keepalive(sock: socket.socket) -> None:
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            if TCP.SOCKET_BUFFER > 0:
+                for option in (socket.SO_SNDBUF, socket.SO_RCVBUF):
+                    if TCP.SOCKET_BUFFER > sock.getsockopt(socket.SOL_SOCKET, option):
+                        sock.setsockopt(socket.SOL_SOCKET, option, TCP.SOCKET_BUFFER)
 
             if hasattr(socket, "TCP_KEEPIDLE"):
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10)
@@ -100,10 +107,11 @@ class TCP:
             log.debug("Could not configure TCP Keep-Alive: %s %s", type(e).__name__, e)
 
     async def connect(self, address: tuple):
-        # The socket used by the whole logic is blocking and thus it blocks when connecting.
-        # Offload the task to a thread executor to avoid blocking the main event loop.
-        with ThreadPoolExecutor(1) as executor:
-            await self.loop.run_in_executor(executor, self.socket.connect, address)
+        if self.proxy:
+            await self.loop.run_in_executor(None, self.socket.connect, address)
+        else:
+            self.socket.setblocking(False)
+            await asyncio.wait_for(self.loop.sock_connect(self.socket, address), TCP.TIMEOUT)
 
         self._enable_keepalive(self.socket)
 
@@ -127,20 +135,22 @@ class TCP:
             await self.writer.drain()
 
     async def recv(self, length: int = 0):
-        data = b""
+        chunks = []
+        received = 0
 
-        while len(data) < length:
+        while received < length:
             try:
                 chunk = await asyncio.wait_for(
-                    self.reader.read(length - len(data)),
+                    self.reader.read(length - received),
                     TCP.TIMEOUT
                 )
             except (OSError, asyncio.TimeoutError):
                 return None
             else:
                 if chunk:
-                    data += chunk
+                    chunks.append(chunk)
+                    received += len(chunk)
                 else:
                     return None
 
-        return data
+        return chunks[0] if len(chunks) == 1 else b"".join(chunks)

@@ -231,6 +231,9 @@ class TestParallelDownload:
 class TestParallelUpload:
     def _patch_sessions(self, client, monkeypatch, sessions):
         client.storage = FakeStorage()
+        async def get_dc_option(*args, **kwargs):
+            return SimpleNamespace(ip_address="127.0.0.1", port=443)
+        client.get_dc_option = get_dc_option
         pool = list(sessions)
         created = list(sessions)
 

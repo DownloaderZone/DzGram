@@ -138,8 +138,6 @@ class Session:
         self.test_mode = test_mode
         self.is_media = is_media
         self.is_cdn = is_cdn
-        # Accepted for API compatibility with pooled-session factories.
-        # Connection address resolution still lives in Connection/DataCenter.
         self.server_address = server_address
         self.port = port
 
@@ -225,6 +223,9 @@ class Session:
                     self.client.ipv6,
                     self.client.proxy,
                     self.is_media,
+                    loop=self._loop(),
+                    server_address=self.server_address,
+                    port=self.port,
                 )
 
                 handshake_timeout = min(self.START_TIMEOUT * attempt, self.WAIT_TIMEOUT)
@@ -237,7 +238,7 @@ class Session:
                     await self.send(raw.functions.Ping(ping_id=0), timeout=handshake_timeout)
 
                     if not self.is_cdn:
-                        await self.send(
+                        config = await self.send(
                             raw.functions.InvokeWithLayer(
                                 layer=layer,
                                 query=raw.functions.InitConnection(
@@ -258,6 +259,8 @@ class Session:
                             ),
                             timeout=handshake_timeout
                         )
+                        if not self.is_media:
+                            self.client._dc_config = config
 
                     self.ping_task = self._loop().create_task(self.ping_worker())
 

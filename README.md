@@ -66,6 +66,9 @@ Uploads use reusable, size-capped connection pools and burst dispatch. User and
 bot transfers adapt their request rate on successful parts and Telegram flood
 waits; Premium transfers skip client-side pacing while still respecting flood
 waits. Progress callbacks are called when the completed byte count changes.
+Premium downloads prefetch the first parallel wave while the initial chunk is
+in flight. Transfer connections use Telegram's advertised media endpoints, and
+TCP receive buffers assemble fragmented packets without repeatedly copying them.
 
 Connection counts can be tuned before starting your client:
 

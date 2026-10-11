@@ -64,6 +64,7 @@ async def _stop_upload_workers(queue: asyncio.Queue, workers: list) -> list:
 
 
 async def _create_upload_session(client: "pyrogram.Client", dc_id: int):
+    option = await client.get_dc_option(dc_id, is_media=True, ipv6=client.ipv6)
     session = Session(
         client,
         dc_id,
@@ -72,6 +73,8 @@ async def _create_upload_session(client: "pyrogram.Client", dc_id: int):
         else await client.storage.auth_key(),
         await client.storage.test_mode(),
         is_media=True,
+        server_address=option.ip_address,
+        port=option.port,
     )
     await session.start()
     return session
