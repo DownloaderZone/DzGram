@@ -204,7 +204,14 @@ class SaveFile:
             md5_sum = md5() if not is_big and not is_missing_part else None
 
             dc_id = await self.storage.dc_id()
-            pool = await get_upload_sessions(self, dc_id, 1 if is_bot else pool_size)
+            ready = [session for session in self.media_session_pools.get(dc_id, [])
+                     if session.is_connected.is_set()] if is_bot else []
+            if ready:
+                pool = ready[:pool_size]
+                for session in pool:
+                    session.last_used = time.monotonic()
+            else:
+                pool = await get_upload_sessions(self, dc_id, 1 if is_bot else pool_size)
 
             _acked = [0]
             n_workers = pool_size * 2

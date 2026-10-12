@@ -81,6 +81,20 @@ Downloads request their first chunk on the authorized datacenter API session
 while the parallel media pool starts in the background. Enable INFO logging for
 `pyrogram.client` to see authorization readiness and first-response timings.
 
+To compare DzGram with WzGram on the same server, run `benchmark_transfer.py`
+in each library's environment with the same bot and file. Set `DZGRAM_API_ID`,
+`DZGRAM_API_HASH`, and `DZGRAM_BOT_TOKEN` through environment variables, then run:
+
+```bash
+python benchmark_transfer.py --chat -1001234567890 --message 42 --runs 2
+python benchmark_transfer.py --upload /path/to/file --runs 2
+```
+
+The JSON results separate first-progress latency, total time, and throughput
+after first progress; the second run measures warm connections. Upload tests
+upload file parts without posting a chat message. Progress callbacks only record
+timings, so Telegram status edits do not affect the comparison.
+
 Connection counts can be tuned before starting your client:
 
 | Account | Upload pool | Download pool | Download workers per connection |

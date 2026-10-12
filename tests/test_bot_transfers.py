@@ -82,6 +82,38 @@ async def test_shared_cooldown_blocks_workers_and_recovers(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_warm_bot_upload_uses_all_ready_connections_immediately():
+    client = Client("warm_pool", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    client.storage = FakeStorage()
+    started = set()
+    all_started = asyncio.Event()
+
+    class Media:
+        def __init__(self, index):
+            self.index = index
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+
+        async def invoke(self, query, **kwargs):
+            started.add(self.index)
+            if len(started) == 4:
+                all_started.set()
+            await asyncio.wait_for(all_started.wait(), 1)
+            return True
+
+    async def unexpected_growth(*args):
+        raise AssertionError("A warm, full pool must not wait for pool creation")
+
+    client.media_session_pools[2] = [Media(i) for i in range(4)]
+    client._get_media_session_pool = unexpected_growth
+    result = await asyncio.wait_for(client.save_file(io.BytesIO(b"x" * (8 * PART_SIZE))), 2)
+    assert result.parts == 8
+    assert started == {0, 1, 2, 3}
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
 async def test_bot_upload_starts_before_pool_expansion_and_keeps_all_parts():
     client = Client("bot_startup", api_id=1, api_hash="test")
     client.me = SimpleNamespace(is_bot=True, is_premium=False)
