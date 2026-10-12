@@ -33,7 +33,7 @@ from pyrogram import StopTransmission
 from pyrogram import raw
 from pyrogram.errors import FloodWait, FloodPremiumWait
 from pyrogram.methods.rate_limiter import AdaptiveBucket
-from pyrogram.session import Auth, Session
+from pyrogram.session import Session
 
 log = logging.getLogger(__name__)
 
@@ -64,19 +64,28 @@ async def _stop_upload_workers(queue: asyncio.Queue, workers: list) -> list:
 
 
 async def _create_upload_session(client: "pyrogram.Client", dc_id: int):
+    if dc_id != await client.storage.dc_id():
+        # The DC factory imports account authorization before sharing its key.
+        main = await client.get_session(dc_id)
+        auth_key = main.auth_key
+    else:
+        auth_key = await client.storage.auth_key()
     option = await client.get_dc_option(dc_id, is_media=True, ipv6=client.ipv6)
     session = Session(
         client,
         dc_id,
-        await Auth(client, dc_id, await client.storage.test_mode()).create()
-        if dc_id != await client.storage.dc_id()
-        else await client.storage.auth_key(),
+        auth_key,
         await client.storage.test_mode(),
         is_media=True,
         server_address=option.ip_address,
         port=option.port,
     )
-    await session.start()
+    try:
+        async with client._session_creation_gate:
+            await session.start(max_attempts=Session.MAX_RETRIES)
+    except BaseException:
+        await session.stop()
+        raise
     return session
 
 
@@ -87,13 +96,31 @@ async def get_upload_sessions(client: "pyrogram.Client", dc_id: int, count: int)
         sessions = client.upload_sessions.get(dc_id)
         if sessions is None:
             sessions = client.upload_sessions[dc_id] = []
+        ready = []
+        for session in sessions:
+            if (getattr(session, "is_connected", None) is None
+                    or session.is_connected.is_set() or session.is_restarting):
+                ready.append(session)
+            else:
+                await session.stop()
+        sessions[:] = ready
         while len(sessions) < count:
             batch = min(count - len(sessions), 3)
-            sessions.extend(
-                await asyncio.gather(
-                    *(_create_upload_session(client, dc_id) for _ in range(batch))
-                )
-            )
+            async def create():
+                session = await _create_upload_session(client, dc_id)
+                sessions.append(session)
+
+            pending = [client.loop.create_task(create()) for _ in range(batch)]
+            try:
+                results = await asyncio.gather(*pending, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, BaseException):
+                        raise result
+            finally:
+                for task in pending:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
         return sessions[:count]
 
 

@@ -76,7 +76,7 @@ class FakeUploadSession:
         self.fail_on = None
         self.delay = None
 
-    async def start(self):
+    async def start(self, **kwargs):
         pass
 
     async def stop(self):
@@ -245,6 +245,7 @@ class TestParallelUpload:
             created.append(session)
             return session
 
+        factory.MAX_RETRIES = pyrogram.session.Session.MAX_RETRIES
         monkeypatch.setattr("pyrogram.methods.advanced.save_file.Session", factory)
         return created
 

@@ -31,6 +31,7 @@ from pyrogram.connection import Connection
 from pyrogram.crypto import mtproto
 from pyrogram.errors import (
     AuthKeyDuplicated,
+    AuthKeyUnregistered,
     BadMsgNotification,
     FloodPremiumWait,
     FloodWait,
@@ -657,6 +658,15 @@ class Session:
             if reason is not None:
                 log.warning(reason)
 
+                if packet is not None and len(packet) == 4 and Int.read(BytesIO(packet)) == -404:
+                    # Reconnecting with the same unknown key cannot recover it.
+                    error = AuthKeyUnregistered()
+                    self._start_exc = error
+                    self.is_connected.clear()
+                    self._fail_pending(error)
+                    await self.stop()
+                    break
+
                 self._fail_pending(ConnectionResetError(reason))
 
                 if self.is_connected.is_set():
@@ -776,6 +786,8 @@ class Session:
                 raise ConnectionResetError("Connection lost while awaiting a response")
 
             if isinstance(result, BaseException):
+                if isinstance(result, RPCError):
+                    raise result
                 raise ConnectionResetError(str(result))
 
             if result is None:
@@ -807,6 +819,9 @@ class Session:
     async def _wait_started(self):
         if self._start_active:
             await self._start_completed.wait()
+
+        if isinstance(self._start_exc, RPCError):
+            raise self._start_exc
 
         if not self.is_connected.is_set():
             await self.restart()

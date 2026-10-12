@@ -203,14 +203,12 @@ class Auth:
                     )
                 )
 
-                # TODO: Handle "auth_key_aux_hash" if the previous step fails
-
                 # Step 7; Step 8
                 g_a = int.from_bytes(server_dh_inner_data.g_a, "big")
                 auth_key = pow(g_a, b, dh_prime).to_bytes(256, "big")
                 server_nonce = server_nonce.to_bytes(16, "little", signed=True)
 
-                # TODO: Handle errors
+                self._check_dh_answer(set_client_dh_params_answer, new_nonce, auth_key)
 
                 #######################
                 # Security checks
@@ -285,3 +283,20 @@ class Auth:
             finally:
                 if self.connection and self.connection.protocol:
                     self.connection.close()
+
+    @staticmethod
+    def _check_dh_answer(answer, new_nonce: bytes, auth_key: bytes):
+        # A rejected exchange must never yield a key for storage or sessions.
+        SecurityCheckMismatch.check(
+            isinstance(answer, raw.types.DhGenOk),
+            "set_client_DH_params returned dh_gen_ok"
+        )
+        auth_key_aux_hash = sha1(auth_key).digest()[:8]
+        expected_hash = int.from_bytes(
+            sha1(new_nonce + b"\x01" + auth_key_aux_hash).digest()[4:20],
+            "little", signed=True
+        )
+        SecurityCheckMismatch.check(
+            answer.new_nonce_hash1 == expected_hash,
+            "new_nonce_hash1 matches the generated auth key"
+        )
