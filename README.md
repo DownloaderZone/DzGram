@@ -73,6 +73,10 @@ Bot uploads reuse the download connection pool. Bot pacing starts at 32 upload
 parts/second and 16 download chunks/second, increases on success, and applies
 Telegram flood cooldowns across the transfer's workers. Override the starting
 rates with `DZGRAM_BOT_UPLOAD_RATE` and `DZGRAM_BOT_DL_RATE`.
+Bot uploads start on the first ready connection and grow the pool in the
+background. Slow pool expansion does not delay upload completion. Bot upload
+progress callbacks are coalesced to at most ten intermediate reports per second,
+with a final completion report.
 
 Connection counts can be tuned before starting your client:
 

@@ -52,7 +52,7 @@ async def test_bot_upload_reuses_download_pool_and_retries_rejected_part():
     assert sorted(requests) == [0, 0, 1, 2, 3]
     assert max_inflight > 1
     await client.save_file(io.BytesIO(b"thumbnail"))
-    assert leases == [2, 1]
+    assert leases == [1, 2, 1]
     assert len(shared_pool) == 2
     assert client.upload_sessions == {}
     assert client.read_ahead_slots._value == budget
@@ -79,6 +79,104 @@ async def test_shared_cooldown_blocks_workers_and_recovers(monkeypatch):
     assert waits[0] == 1.5
     assert bucket.available >= 0
     assert clock[0] >= 102
+
+
+@pytest.mark.asyncio
+async def test_bot_upload_starts_before_pool_expansion_and_keeps_all_parts():
+    client = Client("bot_startup", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    client.storage = FakeStorage()
+    first_part = asyncio.Event()
+    expanded = asyncio.Event()
+    parts = []
+    growth = []
+
+    class Media:
+        async def invoke(self, query, **kwargs):
+            parts.append(query.file_part)
+            first_part.set()
+            await asyncio.wait_for(expanded.wait(), 1)
+            await asyncio.sleep(0)
+            return True
+
+    media = Media()
+
+    async def pool(dc_id, count):
+        growth.append(count)
+        if count > 1:
+            await asyncio.wait_for(first_part.wait(), 1)
+            expanded.set()
+        return [media] * count
+
+    client._get_media_session_pool = pool
+    budget = client.read_ahead_slots._value
+    result = await asyncio.wait_for(client.save_file(io.BytesIO(b"x" * (20 * PART_SIZE))), 3)
+    assert result.parts == 20
+    assert sorted(parts) == list(range(20))
+    assert growth == [1, 8]
+    assert client.read_ahead_slots._value == budget
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_bot_upload_finishes_without_waiting_for_slow_pool_growth():
+    client = Client("bot_slow_pool", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    client.storage = FakeStorage()
+    growth_started = asyncio.Event()
+    growth_cancelled = asyncio.Event()
+
+    class Media:
+        async def invoke(self, query, **kwargs):
+            await growth_started.wait()
+            return True
+
+    async def pool(dc_id, count):
+        if count > 1:
+            growth_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                growth_cancelled.set()
+        return [Media()]
+
+    client._get_media_session_pool = pool
+    result = await asyncio.wait_for(client.save_file(io.BytesIO(b"x" * (4 * PART_SIZE))), 1)
+    assert result.parts == 4
+    assert growth_cancelled.is_set()
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_media_pool_expansion_preserves_ready_connections_on_cancel():
+    client = Client("pool_cancel", api_id=1, api_hash="test")
+    ready = asyncio.Event()
+    slow_started = asyncio.Event()
+    calls = []
+    cached = SimpleNamespace(is_connected=asyncio.Event(), is_restarting=False, last_used=0)
+    cached.is_connected.set()
+    client.media_session_pools[2] = [cached]
+
+    async def get_session(*args, **kwargs):
+        return SimpleNamespace(auth_key=b"key")
+
+    async def make_session(*args):
+        calls.append(True)
+        if len(calls) == 1:
+            ready.set()
+            return cached
+        slow_started.set()
+        await asyncio.Event().wait()
+
+    client.get_session = get_session
+    client._make_media_session = make_session
+    task = asyncio.create_task(client._get_media_session_pool(2, 3))
+    await ready.wait()
+    await slow_started.wait()
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert len(client.media_session_pools[2]) == 2
+    client.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio

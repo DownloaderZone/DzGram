@@ -1422,7 +1422,12 @@ class Client(Methods):
             self, dc_id, auth_key, await self.storage.test_mode(), is_media=True,
             server_address=option.ip_address, port=option.port,
         )
-        await session.start(max_attempts=Session.MAX_RETRIES)
+        try:
+            async with self._session_creation_gate:
+                await session.start(max_attempts=Session.MAX_RETRIES)
+        except BaseException:
+            await session.stop()
+            raise
         return session
 
     async def _get_media_session_pool(self, dc_id: int, n: int) -> list:
@@ -1445,14 +1450,26 @@ class Client(Methods):
             if needed > 0:
                 media = await self.get_session(dc_id, is_media=True)
 
-                while needed > 0:
-                    chunk = min(needed, 3)
-                    async with self._session_creation_gate:
-                        pool.extend(await asyncio.gather(*(
-                            self._make_media_session(dc_id, media.auth_key)
-                            for _ in range(chunk)
-                        )))
-                    needed -= chunk
+                # Keep each ready connection immediately, so cancellation of
+                # pool expansion cannot orphan sockets or discard useful work.
+                async def create():
+                    session = await self._make_media_session(dc_id, media.auth_key)
+                    pool.append(session)
+                    self.media_session_pools[dc_id] = list(pool)
+
+                pending = [self.loop.create_task(create()) for _ in range(needed)]
+                try:
+                    results = await asyncio.gather(*pending, return_exceptions=True)
+                    failures = [r for r in results if isinstance(r, BaseException)]
+                    if failures and not pool:
+                        raise failures[0]
+                    if failures:
+                        log.warning("Media pool expansion incomplete for DC%s: %s", dc_id, failures[0])
+                finally:
+                    for task in pending:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
 
             self.media_session_pools[dc_id] = pool
 

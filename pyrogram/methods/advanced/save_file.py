@@ -204,28 +204,48 @@ class SaveFile:
             md5_sum = md5() if not is_big and not is_missing_part else None
 
             dc_id = await self.storage.dc_id()
-            pool = await get_upload_sessions(self, dc_id, pool_size)
+            pool = await get_upload_sessions(self, dc_id, 1 if is_bot else pool_size)
 
             _acked = [0]
-            n_workers = len(pool) * 2
+            n_workers = pool_size * 2
             queue = asyncio.Queue(n_workers)
             from pyrogram.client import ReadAhead
             budget = ReadAhead(self.read_ahead_slots)
             workers = [
                 self.loop.create_task(worker(pool[i % len(pool)]))
-                for i in range(n_workers)
+                for i in range(len(pool) * 2)
             ]
             next_batch_task = None
             _pacer = AdaptiveBucket(rate=rate_limit, ceiling=max(rate_limit, 300), burst=16, step=1.0)
             _paced = is_bot or not is_premium
             _stalled_since = 0.0
             _last_reported = -1
+            _last_report_time = 0.0
+            pool_growth_task = None
+
+            async def grow_pool():
+                try:
+                    expanded = await get_upload_sessions(self, dc_id, pool_size)
+                except Exception:
+                    log.warning("Upload pool expansion failed; continuing with ready sessions", exc_info=True)
+                    return
+                for session in expanded[len(pool):]:
+                    workers.extend(self.loop.create_task(worker(session)) for _ in range(2))
+
+            async def stop_pool_growth():
+                if pool_growth_task is not None:
+                    pool_growth_task.cancel()
+                    await asyncio.gather(pool_growth_task, return_exceptions=True)
 
             async def _report(parts: int) -> None:
-                nonlocal _last_reported
+                nonlocal _last_reported, _last_report_time
                 if not progress or parts == _last_reported:
                     return
+                now = time.monotonic()
+                if is_bot and parts != file_total_parts and _last_reported >= 0 and now - _last_report_time < 0.1:
+                    return
                 _last_reported = parts
+                _last_report_time = now
                 func = functools.partial(progress, min(parts * part_size, file_size), file_size, *progress_args)
                 try:
                     if inspect.iscoroutinefunction(progress):
@@ -249,6 +269,8 @@ class SaveFile:
             try:
                 fp.seek(part_size * file_part)
                 next_batch_task = self.loop.create_task(read_batch())
+                if is_bot and pool_size > len(pool):
+                    pool_growth_task = self.loop.create_task(grow_pool())
 
                 while True:
                     batch = await next_batch_task
@@ -304,6 +326,7 @@ class SaveFile:
 
                         if is_missing_part:
                             next_batch_task.cancel()
+                            await stop_pool_growth()
                             results = await _stop_upload_workers(queue, workers)
                             for r in results:
                                 if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
@@ -332,6 +355,7 @@ class SaveFile:
                     return None
                 raise
             else:
+                await stop_pool_growth()
                 results = await _stop_upload_workers(queue, workers)
                 for r in results:
                     if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
@@ -353,6 +377,7 @@ class SaveFile:
                         md5_checksum=md5_sum,
                     )
             finally:
+                await stop_pool_growth()
                 if next_batch_task is not None and not next_batch_task.done():
                     next_batch_task.cancel()
                 await _stop_upload_workers(queue, workers)
