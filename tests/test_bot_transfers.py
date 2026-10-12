@@ -226,3 +226,45 @@ async def test_bot_prefetch_flood_retries_without_duplicate_downloads(monkeypatc
     assert cooldowns == [0]
     assert client.read_ahead_slots._value == budget
     client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_download_first_byte_does_not_wait_for_media_handshake():
+    client = Client("first_byte", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    requested = asyncio.Event()
+    pool_started = asyncio.Event()
+    calls = []
+    pool_tasks = []
+
+    class API(Session):
+        def __init__(self):
+            pass
+
+        async def invoke(self, query, **kwargs):
+            requested.set()
+            return raw.types.upload.File(bytes=b"x" * CHUNK_SIZE, type=None, mtime=0)
+
+    async def get_session(dc_id, is_media=False, **kwargs):
+        calls.append(is_media)
+        if is_media:
+            await asyncio.Event().wait()
+        return API()
+
+    async def pool(*args):
+        pool_tasks.append(asyncio.current_task())
+        pool_started.set()
+        await asyncio.Event().wait()
+
+    client.get_session = get_session
+    client._get_media_session_pool = pool
+    download = client.get_file(make_file_id(), file_size=2 * CHUNK_SIZE)
+    first = await asyncio.wait_for(download.__anext__(), 1)
+    assert len(first) == CHUNK_SIZE
+    assert requested.is_set()
+    assert calls == [False]
+    await download.aclose()
+    for task in pool_tasks:
+        task.cancel()
+    await asyncio.gather(*pool_tasks, return_exceptions=True)
+    client.executor.shutdown(wait=True)

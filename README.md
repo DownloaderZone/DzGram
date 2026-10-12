@@ -77,6 +77,9 @@ Bot uploads start on the first ready connection and grow the pool in the
 background. Slow pool expansion does not delay upload completion. Bot upload
 progress callbacks are coalesced to at most ten intermediate reports per second,
 with a final completion report.
+Downloads request their first chunk on the authorized datacenter API session
+while the parallel media pool starts in the background. Enable INFO logging for
+`pyrogram.client` to see authorization readiness and first-response timings.
 
 Connection counts can be tuned before starting your client:
 

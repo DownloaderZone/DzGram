@@ -1688,18 +1688,21 @@ class Client(Methods):
                 needs_pool = min(total, total_chunks) > 1
                 _fake = self.media_sessions.get(dc_id)
                 use_fake = _fake is not None and not isinstance(_fake, Session)
-                if needs_pool and not use_fake:
-                    pool_task = asyncio.ensure_future(self._get_media_session_pool(dc_id, pool_size))
-                    pool_task.add_done_callback(lambda t: t.cancelled() or t.exception())
-
                 # Test hook: allow FakeMediaSession injection via media_sessions
+                startup_time = time.monotonic()
+                log.info("Download startup: DC%s, size=%s bytes, acquiring authorized session", dc_id, file_size)
                 if use_fake:
                     session = _fake
                     use_fake = True
                 else:
-                    session = await self.get_session(dc_id, is_media=True)
+                    # GetFile works on the authorized API session too. Do not
+                    # make chunk zero wait for an extra media TCP handshake.
+                    session = await self.get_session(dc_id)
                     use_fake = False
-                    self.media_sessions[dc_id] = session
+                log.info("Download startup: DC%s authorized session ready in %.2fs", dc_id, time.monotonic() - startup_time)
+                if needs_pool and not use_fake:
+                    pool_task = asyncio.ensure_future(self._get_media_session_pool(dc_id, pool_size))
+                    pool_task.add_done_callback(lambda t: t.cancelled() or t.exception())
 
                 # Issue the first pooled wave while the initial request is in
                 # flight. Keep its memory charged to the shared transfer budget.
@@ -1766,6 +1769,8 @@ class Client(Methods):
                 except BaseException:
                     await drop_prefetch()
                     raise
+
+                log.info("Download startup: DC%s first response %s in %.2fs", dc_id, type(r).__name__, time.monotonic() - startup_time)
 
                 if use_fake:
                     # Legacy single-session path for injected fakes (tests)
