@@ -1,4 +1,4 @@
-"""Run in an environment containing either DzGram or WzGram.
+"""Measure transfers in the currently installed MTProto client environment.
 
 Credentials: DZGRAM_API_ID, DZGRAM_API_HASH, DZGRAM_BOT_TOKEN.
 Example: python benchmark_transfer.py --chat -1001234567890 --message 42
@@ -50,7 +50,7 @@ async def main(args):
     if not args.upload and (args.chat is None or args.message is None):
         raise ValueError("Provide --upload, or both --chat and --message")
     versions = {"pyrogram": __version__}
-    for package in ("dzgram", "wzgram", "warpcrypto"):
+    for package in ("dzgram", "warpcrypto"):
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:

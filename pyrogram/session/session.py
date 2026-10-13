@@ -20,6 +20,7 @@ import asyncio
 import bisect
 import logging
 import os
+import struct
 import time
 from hashlib import sha1
 from io import BytesIO
@@ -62,6 +63,24 @@ class Result:
     def __init__(self):
         self.value: Any = None
         self.event: asyncio.Event = asyncio.Event()
+
+
+def _serialize_file_part(data):
+    """Serialize upload chunks with one payload copy."""
+    if isinstance(data, raw.functions.upload.SaveBigFilePart):
+        header = struct.pack("<Iqii", data.ID, data.file_id, data.file_part, data.file_total_parts)
+    elif isinstance(data, raw.functions.upload.SaveFilePart):
+        header = struct.pack("<Iqi", data.ID, data.file_id, data.file_part)
+    else:
+        return None
+    length = len(data.bytes)
+    if length > 253:
+        prefix = b"\xfe" + length.to_bytes(3, "little")
+        padding = -length % 4
+    else:
+        prefix = bytes((length,))
+        padding = -(length + 1) % 4
+    return b"".join((header, prefix, data.bytes, bytes(padding)))
 
 
 class ConnectionLost:
@@ -704,7 +723,9 @@ class Session:
         if self.connection is None:
             raise OSError("Connection is not established")
 
-        serialized = data.write()
+        serialized = _serialize_file_part(data)
+        if serialized is None:
+            serialized = data.write()
         message = self.msg_factory(data, len(serialized))
         msg_id = message.msg_id
 

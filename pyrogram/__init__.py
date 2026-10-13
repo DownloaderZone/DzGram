@@ -42,6 +42,6 @@ from .client import Client
 from .sync import idle, compose
 
 crypto_executor = ThreadPoolExecutor(
-    max(8, min(32, (os.cpu_count() or 0) * 2 + 4)),
+    max(1, int(os.environ.get("DZGRAM_CRYPTO_WORKERS", min(4, max(2, os.cpu_count() or 1))))),
     thread_name_prefix="CryptoWorker",
 )

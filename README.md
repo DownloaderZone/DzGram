@@ -89,6 +89,9 @@ until queued parts are acknowledged. CDN downloads reuse Telegram's supplied
 hashes rather than fetching hashes again for every chunk.
 Bot uploads use four in-flight workers per connection by default; tune this with
 `DZGRAM_BOT_UPLOAD_WORKERS`. Ready download connections join during pool startup.
+Upload chunks use a single-copy serialization fast path preserving the MTProto
+wire format. Crypto uses two to four worker threads by default; override this with
+`DZGRAM_CRYPTO_WORKERS` when tuning for your server.
 
 `AUTH_KEY_UNREGISTERED` on an existing user session means its saved authorization
 is no longer recognized by Telegram. Generate a new user session string and
@@ -97,7 +100,7 @@ MongoDB when it overrides environment settings). Updating server RSA public keys
 cannot restore a revoked authorization. The bot must also have access to configured
 private chats; numeric chat IDs can be supplied as signed strings or integers.
 
-To compare DzGram with WzGram on the same server, run `benchmark_transfer.py`
+To compare client transfer performance on the same server, run `benchmark_transfer.py`
 in each library's environment with the same bot and file. Set `DZGRAM_API_ID`,
 `DZGRAM_API_HASH`, and `DZGRAM_BOT_TOKEN` through environment variables, then run:
 
