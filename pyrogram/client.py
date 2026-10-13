@@ -520,6 +520,7 @@ class Client(Methods):
         # Pooled media sessions per DC used for parallel downloads/uploads.
         # Sessions are reused across transfers and reaped when idle.
         self.media_session_pools = {}
+        self._media_pool_tasks = set()
         self._media_sessions_locks = {}
         self._session_locks = {}
         self._session_creation_gate = asyncio.Semaphore(4)
@@ -1542,12 +1543,24 @@ class Client(Methods):
                 pass
 
         try:
+            downloaded = 0
+            async def report_download(current, total, *args):
+                nonlocal downloaded
+                downloaded = current
+                if progress:
+                    if inspect.iscoroutinefunction(progress):
+                        await progress(current, total, *progress_args)
+                    else:
+                        await self.loop.run_in_executor(self.executor, functools.partial(progress, current, total, *progress_args))
+
             async for chunk in self.get_file(
-                file_id, file_size, 0, 0, progress, progress_args,
+                file_id, file_size, 0, 0, report_download, (),
                 _write_file=None if in_memory else file
             ):
                 if in_memory:
                     file.write(chunk)
+            if file_size > 0 and downloaded < file_size:
+                raise OSError(f"Incomplete download: received {downloaded} of {file_size} bytes")
         except BaseException as e:
             if not in_memory:
                 try:
@@ -1630,6 +1643,10 @@ class Client(Methods):
             total = abs(limit) or (1 << 31) - 1
             chunk_size = 1024 * 1024
             offset_bytes = abs(offset) * chunk_size
+            if file_size > 0:
+                total = min(total, max(0, math.ceil((file_size - offset_bytes) / chunk_size)))
+                if total == 0:
+                    return
             _last_progress_time = 0.0
             _last_reported = -1
 
@@ -1669,8 +1686,8 @@ class Client(Methods):
                 if _is_bot:
                     dl_pool_size = max(1, int(os.environ.get("DZGRAM_BOT_DL_POOL", 5)))
                     dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_BOT_DL_WORKERS", 3)))
-                    dl_rate = int(os.environ.get("DZGRAM_BOT_DL_RATE", 16))
-                    dl_burst = 8
+                    dl_rate = int(os.environ.get("DZGRAM_BOT_DL_RATE", 64))
+                    dl_burst = 16
                 elif _is_premium:
                     dl_pool_size = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_POOL", 6)))
                     dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_WORKERS", 4)))
@@ -1702,6 +1719,8 @@ class Client(Methods):
                 log.info("Download startup: DC%s authorized session ready in %.2fs", dc_id, time.monotonic() - startup_time)
                 if needs_pool and not use_fake:
                     pool_task = asyncio.ensure_future(self._get_media_session_pool(dc_id, pool_size))
+                    self._media_pool_tasks.add(pool_task)
+                    pool_task.add_done_callback(self._media_pool_tasks.discard)
                     pool_task.add_done_callback(lambda t: t.cancelled() or t.exception())
 
                 # Issue the first pooled wave while the initial request is in
@@ -1710,7 +1729,8 @@ class Client(Methods):
                 prefetch_budget = ReadAhead(self.read_ahead_slots)
                 prefetch_task = None
                 prefetch_offset = offset_bytes
-                _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 150), burst=dl_burst)
+                _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 150),
+                                               burst=dl_burst, step=8.0 if _is_bot else 0.5)
                 _paced = _is_bot or not _is_premium
 
                 async def fetch_part(media, at):
@@ -1736,7 +1756,7 @@ class Client(Methods):
 
                 if needs_pool and not use_fake and (_is_premium or _is_bot):
                     async def prefetch():
-                        pool = await pool_task
+                        pool = await asyncio.shield(pool_task)
                         count = min(total_chunks - 1, len(pool) * dl_workers_per_session)
                         for i in range(count):
                             at = prefetch_offset + (i + 1) * chunk_size
@@ -1801,7 +1821,7 @@ class Client(Methods):
                         _write_file.write(first)
                     first = None
                     offset_bytes += chunk_size
-                    await _report(offset_bytes)
+                    await _report(offset_bytes - chunk_size + first_len)
                     if not first_len or first_len < chunk_size or current >= total:
                         return
                     base_offset = offset_bytes - chunk_size
@@ -1824,7 +1844,7 @@ class Client(Methods):
                             yield chunk
                             current += 1
                             offset_bytes += chunk_size
-                            await _report(offset_bytes)
+                            await _report(offset_bytes - chunk_size + len(chunk))
                             if len(chunk) < chunk_size or current >= total:
                                 break
                     finally:
@@ -1845,7 +1865,7 @@ class Client(Methods):
 
                         first_len = len(first_chunk)
                         first_chunk = None
-                        await _report(offset_bytes)
+                        await _report(offset_bytes - chunk_size + first_len)
                     except BaseException:
                         await drop_prefetch()
                         raise
@@ -1875,7 +1895,7 @@ class Client(Methods):
                             current += 1
                             offset_bytes += chunk_size
 
-                            await _report(offset_bytes)
+                            await _report(offset_bytes - chunk_size + len(chunk))
 
                             if len(chunk) < chunk_size or current >= total:
                                 return
@@ -1886,9 +1906,17 @@ class Client(Methods):
                     total_workers = min(dl_pool_size * dl_workers_per_session, total_chunks)
                     if needs_pool:
                         try:
-                            pool = await pool_task
-                            if prefetch_task is not None:
-                                await prefetch_task
+                            if _is_bot and not pool_task.done():
+                                await asyncio.wait([pool_task], timeout=0.1)
+                            if _is_bot and not pool_task.done():
+                                # Keep downloading on the authorized connection
+                                # instead of stalling at 1 MiB for a slow pool.
+                                await drop_prefetch()
+                                pool = [session]
+                            else:
+                                pool = await pool_task
+                                if prefetch_task is not None:
+                                    await prefetch_task
                         except BaseException:
                             await drop_prefetch()
                             raise
@@ -1910,12 +1938,14 @@ class Client(Methods):
                     if not _write_mode:
                         received = {}
                     else:
+                        _write_file.flush()
                         _write_fd = _write_file.fileno()
                     _done_count = 0
+                    _done_bytes = 0
                     _total_chunks = chunks_needed
 
                     async def _worker(session):
-                        nonlocal _done_count
+                        nonlocal _done_count, _done_bytes
                         while True:
                             try:
                                 offset = work.get_nowait()
@@ -1947,6 +1977,7 @@ class Client(Methods):
                                 received[offset] = chunk_data
 
                             _done_count += 1
+                            _done_bytes += len(chunk_data)
                             data_ready.set()
 
                             chunk_len = len(chunk_data)
@@ -1960,6 +1991,21 @@ class Client(Methods):
                         for i in range(total_workers)
                     ]
 
+                    upgrade_task = None
+                    if _is_bot and needs_pool and not pool_task.done():
+                        async def upgrade_workers():
+                            try:
+                                expanded = await asyncio.shield(pool_task)
+                            except Exception:
+                                log.warning("Download continuing without expanded media pool", exc_info=True)
+                                return
+                            for media in expanded:
+                                for _ in range(dl_workers_per_session):
+                                    task = self.loop.create_task(_worker(media))
+                                    task.add_done_callback(lambda _: data_ready.set())
+                                    tasks.append(task)
+                        upgrade_task = self.loop.create_task(upgrade_workers())
+
                     for t in tasks:
                         t.add_done_callback(lambda _: data_ready.set())
 
@@ -1969,7 +2015,7 @@ class Client(Methods):
                         while current < total:
                             if _write_mode:
                                 if _done_count >= _total_chunks:
-                                    await _report(offset_bytes + _done_count * chunk_size)
+                                    await _report(offset_bytes + _done_bytes)
                                     return
                                 for t in tasks:
                                     if t.done() and not t.cancelled():
@@ -1986,7 +2032,7 @@ class Client(Methods):
 
                                 if _done_count != _reported_count:
                                     _reported_count = _done_count
-                                    await _report(offset_bytes + _done_count * chunk_size)
+                                    await _report(offset_bytes + _done_bytes)
 
                                 yield b""
                             else:
@@ -2007,11 +2053,14 @@ class Client(Methods):
                                 current += 1
                                 offset_bytes += chunk_size
 
-                                await _report(offset_bytes)
+                                await _report(offset_bytes - chunk_size + len(chunk))
 
                                 if len(chunk) < chunk_size or current >= total:
                                     return
                     finally:
+                        if upgrade_task is not None:
+                            upgrade_task.cancel()
+                            await asyncio.gather(upgrade_task, return_exceptions=True)
                         for t in tasks:
                             if not t.done():
                                 t.cancel()
@@ -2027,6 +2076,24 @@ class Client(Methods):
                     _cdn_rate = TokenBucket(rate=dl_rate, burst=dl_burst)
                     _report_tasks = set()
                     _stop_requested = False
+                    _cdn_hashes = {h.offset: h for h in r.file_hashes}
+
+                    async def hashes_covering(start, length):
+                        covering = []
+                        at = start
+                        while at < start + length:
+                            h = _cdn_hashes.pop(at, None)
+                            if h is None:
+                                fetched = await session.invoke(raw.functions.upload.GetCdnFileHashes(
+                                    file_token=r.file_token, offset=at
+                                ))
+                                _cdn_hashes.update((h.offset, h) for h in fetched)
+                                h = _cdn_hashes.pop(at, None)
+                            CDNFileHashMismatch.check(h is not None and h.limit > 0,
+                                                      "CDN hash must cover the requested offset")
+                            covering.append(h)
+                            at = h.offset + h.limit
+                        return covering
 
                     try:
                         while True:
@@ -2058,34 +2125,32 @@ class Client(Methods):
 
                             # https://core.telegram.org/cdn#decrypting-files
                             decrypted_chunk = await self.loop.run_in_executor(
-                                self.crypto_executor,
+                                pyrogram.crypto_executor,
                                 aes.ctr256_decrypt,
                                 chunk,
                                 r.encryption_key,
                                 bytearray(r.encryption_iv[:-4] + (offset_bytes // 16).to_bytes(4, "big"))
                             )
 
-                            hashes = await session.invoke(
-                                raw.functions.upload.GetCdnFileHashes(
-                                    file_token=r.file_token,
-                                    offset=offset_bytes
-                                )
-                            )
+                            hashes = await hashes_covering(offset_bytes, len(decrypted_chunk))
 
                             # https://core.telegram.org/cdn#verifying-files
                             def _check_all_hashes():
-                                for i, h in enumerate(hashes):
-                                    cdn_chunk = decrypted_chunk[h.limit * i: h.limit * (i + 1)]
+                                for h in hashes:
+                                    at = h.offset - offset_bytes
+                                    cdn_chunk = decrypted_chunk[at:at + h.limit]
                                     CDNFileHashMismatch.check(
                                         h.hash == sha256(cdn_chunk).digest(),
                                         "h.hash == sha256(cdn_chunk).digest()"
                                     )
 
-                            await self.loop.run_in_executor(self.crypto_executor, _check_all_hashes)
+                            await self.loop.run_in_executor(pyrogram.crypto_executor, _check_all_hashes)
 
                             if _stop_requested:
                                 raise pyrogram.StopTransmission
 
+                            if _write_file is not None:
+                                _write_file.write(decrypted_chunk)
                             yield decrypted_chunk
 
                             current += 1
@@ -2096,7 +2161,7 @@ class Client(Methods):
                                 if _now - _last_progress_time >= 0.1:
                                     _last_progress_time = _now
 
-                                    _sent = min(offset_bytes, file_size) if file_size != 0 else offset_bytes
+                                    _sent = min(offset_bytes - chunk_size + len(chunk), file_size) if file_size != 0 else offset_bytes - chunk_size + len(chunk)
                                     _total = file_size
 
                                     async def report(_sent=_sent, _total=_total):
@@ -2121,11 +2186,16 @@ class Client(Methods):
                                     _t.add_done_callback(_report_tasks.discard)
 
                             if len(chunk) < chunk_size or current >= total:
+                                await asyncio.gather(*_report_tasks, return_exceptions=True)
+                                if _stop_requested:
+                                    raise pyrogram.StopTransmission
+                                await _report(offset_bytes - chunk_size + len(chunk))
                                 break
                     finally:
                         for _t in list(_report_tasks):
                             if not _t.done():
                                 _t.cancel()
+                        await asyncio.gather(*_report_tasks, return_exceptions=True)
                         await cdn_session.stop()
             except Exception:
                 raise

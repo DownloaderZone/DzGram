@@ -48,6 +48,19 @@ class Terminate:
         await self.storage.save()
         await self.dispatcher.stop()
 
+        # Stop pool creation before closing its cached sessions; otherwise a
+        # background builder can publish fresh sockets after shutdown.
+        pool_tasks = list(getattr(self, "_media_pool_tasks", ()))
+        for task in pool_tasks:
+            task.cancel()
+        await asyncio.gather(*pool_tasks, return_exceptions=True)
+        if hasattr(self, "_media_pool_tasks"):
+            self._media_pool_tasks.clear()
+        if getattr(self, "media_pool_reaper_task", None) is not None:
+            self.media_pool_reaper_event.set()
+            await self.media_pool_reaper_task
+            self.media_pool_reaper_task = None
+
         for media_session in self.media_sessions.values():
             try:
                 await media_session.stop()
@@ -86,16 +99,7 @@ class Terminate:
         if hasattr(self, "sessions"):
             self.sessions.clear()
 
-        if getattr(self, "media_pool_reaper_task", None) is not None:
-            self.media_pool_reaper_event.set()
-
-            try:
-                await self.media_pool_reaper_task
-            except Exception:
-                pass
-
-            self.media_pool_reaper_event.clear()
-            self.media_pool_reaper_task = None
+        self.media_pool_reaper_event.clear()
 
         self.updates_watchdog_event.set()
 

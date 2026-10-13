@@ -69,8 +69,8 @@ waits. Progress callbacks are called when the completed byte count changes.
 Bot and Premium downloads prefetch the first parallel wave while the initial chunk is
 in flight. Transfer connections use Telegram's advertised media endpoints, and
 TCP receive buffers assemble fragmented packets without repeatedly copying them.
-Bot uploads reuse the download connection pool. Bot pacing starts at 32 upload
-parts/second and 16 download chunks/second, increases on success, and applies
+Bot uploads reuse the download connection pool. Bot pacing starts at 128 upload
+parts/second and 64 download chunks/second, increases on success, and applies
 Telegram flood cooldowns across the transfer's workers. Override the starting
 rates with `DZGRAM_BOT_UPLOAD_RATE` and `DZGRAM_BOT_DL_RATE`.
 Bot uploads start on the first ready connection and grow the pool in the
@@ -80,6 +80,13 @@ with a final completion report.
 Downloads request their first chunk on the authorized datacenter API session
 while the parallel media pool starts in the background. Enable INFO logging for
 `pyrogram.client` to see authorization readiness and first-response timings.
+Cold bot uploads can also send their first parts on the existing API connection.
+Bot downloads continue on that connection if media pool setup is slow, then add
+media workers when those connections are ready. Bot rates ramp up by 16 upload
+parts/sec or 8 download chunks/sec per successful second, with flood backoff.
+Upload workers join as individual media connections become ready and stay active
+until queued parts are acknowledged. CDN downloads reuse Telegram's supplied
+hashes rather than fetching hashes again for every chunk.
 
 To compare DzGram with WzGram on the same server, run `benchmark_transfer.py`
 in each library's environment with the same bot and file. Set `DZGRAM_API_ID`,

@@ -1,6 +1,6 @@
 import asyncio
 import io
-from hashlib import md5
+from hashlib import md5, sha256
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +10,81 @@ from pyrogram.errors import FloodWait
 from pyrogram.methods.rate_limiter import AdaptiveBucket
 from pyrogram.session import Session
 from tests.test_media import FakeStorage, PART_SIZE, CHUNK_SIZE, make_file_id
+
+
+@pytest.mark.asyncio
+async def test_cdn_download_reuses_redirect_hashes_and_writes_file(monkeypatch):
+    client = Client("cdn", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    data = b"cdn data"
+    hashes = [raw.types.FileHash(offset=0, limit=len(data), hash=sha256(data).digest())]
+    stopped = []
+
+    class API(Session):
+        def __init__(self):
+            pass
+
+        async def invoke(self, query, **kwargs):
+            assert isinstance(query, raw.functions.upload.GetFile)
+            return raw.types.upload.FileCdnRedirect(
+                dc_id=2, file_token=b"token", encryption_key=b"k" * 32,
+                encryption_iv=b"i" * 16, file_hashes=hashes
+            )
+
+    class CDN:
+        async def invoke(self, query, **kwargs):
+            assert isinstance(query, raw.functions.upload.GetCdnFile)
+            return raw.types.upload.CdnFile(bytes=data)
+
+        async def stop(self):
+            stopped.append(True)
+
+    async def get_session(*args, **kwargs):
+        return CDN() if kwargs.get("is_cdn") else API()
+
+    client.get_session = get_session
+    monkeypatch.setattr("pyrogram.client.aes.ctr256_decrypt", lambda data, *args: data)
+    output = io.BytesIO()
+    result = b"".join([chunk async for chunk in client.get_file(
+        make_file_id(), file_size=len(data), _write_file=output
+    )])
+    assert result == data
+    assert output.getvalue() == data
+    assert stopped == [True]
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_upload_uses_new_ready_session_before_expansion_finishes():
+    client = Client("incremental", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    client.storage = FakeStorage()
+    used = asyncio.Event()
+
+    class Media:
+        def __init__(self, new=False):
+            self.new = new
+            self.dc_id = 2
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+
+        async def invoke(self, query, **kwargs):
+            if self.new:
+                used.set()
+            await asyncio.wait_for(used.wait(), 1)
+            return True
+
+    client.session = Media()
+
+    async def expand(*args):
+        client.media_session_pools[2] = [Media(new=True)]
+        await asyncio.Event().wait()
+
+    client._get_media_session_pool = expand
+    result = await asyncio.wait_for(client.save_file(io.BytesIO(b"x" * (8 * PART_SIZE))), 2)
+    assert result.parts == 8
+    assert used.is_set()
+    client.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
@@ -110,6 +185,71 @@ async def test_warm_bot_upload_uses_all_ready_connections_immediately():
     result = await asyncio.wait_for(client.save_file(io.BytesIO(b"x" * (8 * PART_SIZE))), 2)
     assert result.parts == 8
     assert started == {0, 1, 2, 3}
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_bot_upload_starts_on_main_session_without_media_setup():
+    client = Client("api_upload", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    client.storage = FakeStorage()
+    sent = []
+
+    class API:
+        dc_id = 2
+        is_connected = asyncio.Event()
+
+        async def invoke(self, query, **kwargs):
+            sent.append(query.file_part)
+            return True
+
+    client.session = API()
+    client.session.is_connected.set()
+
+    async def slow_pool(*args):
+        await asyncio.Event().wait()
+
+    client._get_media_session_pool = slow_pool
+    result = await asyncio.wait_for(client.save_file(io.BytesIO(b"x" * (4 * PART_SIZE))), 1)
+    assert result.parts == 4
+    assert sorted(sent) == [0, 1, 2, 3]
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_bot_download_continues_while_media_pool_is_blocked():
+    client = Client("api_download", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    data = b"x" * (4 * CHUNK_SIZE)
+    background = []
+
+    class API(Session):
+        def __init__(self):
+            pass
+
+        async def invoke(self, query, **kwargs):
+            await asyncio.sleep(0)
+            return raw.types.upload.File(bytes=data[query.offset:query.offset + query.limit], type=None, mtime=0)
+
+    async def session(*args, **kwargs):
+        return API()
+
+    async def slow_pool(*args):
+        background.append(asyncio.current_task())
+        await asyncio.Event().wait()
+
+    client.get_session = session
+    client._get_media_session_pool = slow_pool
+    budget = client.read_ahead_slots._value
+
+    async def collect():
+        return b"".join([chunk async for chunk in client.get_file(make_file_id(), file_size=len(data))])
+
+    assert await asyncio.wait_for(collect(), 1) == data
+    assert client.read_ahead_slots._value == budget
+    for task in background:
+        task.cancel()
+    await asyncio.gather(*background, return_exceptions=True)
     client.executor.shutdown(wait=True)
 
 
