@@ -17,6 +17,7 @@
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import asyncio
 
 import pyrogram
 from pyrogram import raw
@@ -66,11 +67,10 @@ class Start:
                 log.info("Takeout session %s initiated", self.takeout_id)
 
             await self.invoke(raw.functions.updates.GetState())
-        except (Exception, KeyboardInterrupt):
+            self.me = await self.get_me()
+            await self.initialize()
+        except (Exception, KeyboardInterrupt, asyncio.CancelledError):
             await self.disconnect()
             raise
         else:
-            self.me = await self.get_me()
-            await self.initialize()
-
             return self

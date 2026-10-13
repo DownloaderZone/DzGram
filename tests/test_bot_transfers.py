@@ -88,6 +88,47 @@ async def test_upload_uses_new_ready_session_before_expansion_finishes():
 
 
 @pytest.mark.asyncio
+async def test_download_uses_ready_media_before_full_pool_finishes():
+    client = Client("incremental_download", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    used = asyncio.Event()
+    builders = []
+
+    class Media(Session):
+        def __init__(self, new=False):
+            self.new = new
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+
+        async def invoke(self, query, **kwargs):
+            if query.offset:
+                if self.new:
+                    used.set()
+                await asyncio.wait_for(used.wait(), 1)
+            return raw.types.upload.File(bytes=b"x" * CHUNK_SIZE, type=None, mtime=0)
+
+    async def get_session(*args, **kwargs):
+        return Media()
+
+    async def expand(*args):
+        builders.append(asyncio.current_task())
+        client.media_session_pools[2] = [Media(new=True)]
+        await asyncio.Event().wait()
+
+    client.get_session = get_session
+    client._get_media_session_pool = expand
+    async def collect():
+        return b"".join([chunk async for chunk in client.get_file(make_file_id(), file_size=20 * CHUNK_SIZE)])
+    result = await asyncio.wait_for(collect(), 2)
+    assert len(result) == 20 * CHUNK_SIZE
+    assert used.is_set()
+    for task in builders:
+        task.cancel()
+    await asyncio.gather(*builders, return_exceptions=True)
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
 async def test_bot_upload_reuses_download_pool_and_retries_rejected_part():
     client = Client("bot_upload", api_id=1, api_hash="test")
     client.me = SimpleNamespace(is_bot=True, is_premium=False)

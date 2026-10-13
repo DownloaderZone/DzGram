@@ -1994,16 +1994,26 @@ class Client(Methods):
                     upgrade_task = None
                     if _is_bot and needs_pool and not pool_task.done():
                         async def upgrade_workers():
+                            active = list(pool)
+                            def add_ready(expanded):
+                                for media in expanded:
+                                    if media in active:
+                                        continue
+                                    active.append(media)
+                                    for _ in range(dl_workers_per_session):
+                                        task = self.loop.create_task(_worker(media))
+                                        task.add_done_callback(lambda _: data_ready.set())
+                                        tasks.append(task)
                             try:
+                                while not pool_task.done():
+                                    add_ready([media for media in self.media_session_pools.get(dc_id, [])
+                                               if media.is_connected.is_set()])
+                                    await asyncio.wait([pool_task], timeout=0.05)
                                 expanded = await asyncio.shield(pool_task)
                             except Exception:
                                 log.warning("Download continuing without expanded media pool", exc_info=True)
                                 return
-                            for media in expanded:
-                                for _ in range(dl_workers_per_session):
-                                    task = self.loop.create_task(_worker(media))
-                                    task.add_done_callback(lambda _: data_ready.set())
-                                    tasks.append(task)
+                            add_ready(expanded)
                         upgrade_task = self.loop.create_task(upgrade_workers())
 
                     for t in tasks:

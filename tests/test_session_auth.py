@@ -9,6 +9,8 @@ from pyrogram.errors import AuthKeyUnregistered, SecurityCheckMismatch
 from pyrogram.methods.advanced.save_file import _create_upload_session, get_upload_sessions
 from pyrogram.session import Auth, Session
 from tests.test_media import FakeStorage
+from pyrogram.crypto import rsa
+from pyrogram.raw.core import Bytes
 
 
 def test_auth_exchange_accepts_only_confirmed_key():
@@ -28,6 +30,14 @@ def test_auth_exchange_accepts_only_confirmed_key():
     ):
         with pytest.raises(SecurityCheckMismatch):
             Auth._check_dh_answer(rejected, nonce, key)
+
+
+def test_server_rsa_key_fingerprints_match_tdlib_encoding():
+    for fingerprint, key in rsa.server_public_keys.items():
+        modulus = key.m.to_bytes((key.m.bit_length() + 7) // 8, "big")
+        exponent = key.e.to_bytes((key.e.bit_length() + 7) // 8, "big")
+        encoded = Bytes(modulus) + Bytes(exponent)
+        assert int.from_bytes(sha1(encoded).digest()[12:], "little", signed=True) == fingerprint
 
 
 @pytest.mark.asyncio

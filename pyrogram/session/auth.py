@@ -47,6 +47,7 @@ class Auth:
         self.test_mode = test_mode
         self.ipv6 = client.ipv6
         self.proxy = client.proxy
+        self.loop = client.loop
 
         self.connection = None
 
@@ -81,7 +82,7 @@ class Auth:
         # The server may close the connection at any time, causing the auth key creation to fail.
         # If that happens, just try again up to MAX_RETRIES times.
         while True:
-            self.connection = Connection(self.dc_id, self.test_mode, self.ipv6, self.proxy)
+            self.connection = Connection(self.dc_id, self.test_mode, self.ipv6, self.proxy, loop=self.loop)
 
             try:
                 log.info(f"Start creating a new auth key on DC{self.dc_id}")
@@ -92,6 +93,7 @@ class Auth:
                 nonce = int.from_bytes(urandom(16), "little", signed=True)
                 log.debug(f"Send req_pq: {nonce}")
                 res_pq = await self.invoke(raw.functions.ReqPqMulti(nonce=nonce))
+                SecurityCheckMismatch.check(res_pq.nonce == nonce, "res_pq nonce matches request")
                 log.debug(f"Got ResPq: {res_pq.server_nonce}")
                 log.debug(f"Server public key fingerprints: {res_pq.server_public_key_fingerprints}")
 
@@ -109,7 +111,7 @@ class Auth:
                 pq = int.from_bytes(res_pq.pq, "big")
                 log.debug(f"Start PQ factorization: {pq}")
                 start = time.time()
-                g = prime.decompose(pq)
+                g = await self.loop.run_in_executor(None, prime.decompose, pq)
                 p, q = sorted((g, pq // g))  # p < q
                 log.debug(f"Done PQ factorization ({round(time.time() - start, 3)}s): {p} {q}")
 
@@ -117,19 +119,20 @@ class Auth:
                 server_nonce = res_pq.server_nonce
                 new_nonce = int.from_bytes(urandom(32), "little", signed=True)
 
-                data = raw.types.PQInnerData(
+                data = raw.types.PQInnerDataDc(
                     pq=res_pq.pq,
                     p=p.to_bytes(4, "big"),
                     q=q.to_bytes(4, "big"),
                     nonce=nonce,
                     server_nonce=server_nonce,
                     new_nonce=new_nonce,
+                    dc=-self.dc_id if self.test_mode else self.dc_id,
                 ).write()
 
                 sha = sha1(data).digest()
                 padding = urandom(- (len(data) + len(sha)) % 255)
                 data_with_hash = sha + data + padding
-                encrypted_data = rsa.encrypt(data_with_hash, public_key_fingerprint)
+                encrypted_data = await self.loop.run_in_executor(None, rsa.encrypt, data_with_hash, public_key_fingerprint)
 
                 log.debug("Done encrypt data with RSA")
 
@@ -146,6 +149,10 @@ class Auth:
                     )
                 )
 
+                SecurityCheckMismatch.check(isinstance(server_dh_params, raw.types.ServerDHParamsOk),
+                                            "server accepted DH parameters")
+                SecurityCheckMismatch.check(server_dh_params.nonce == nonce and server_dh_params.server_nonce == server_nonce,
+                                            "DH response nonces match request")
                 encrypted_answer = server_dh_params.encrypted_answer
 
                 server_nonce = server_nonce.to_bytes(16, "little", signed=True)
@@ -167,6 +174,14 @@ class Auth:
                 answer = answer_with_hash[20:]
 
                 server_dh_inner_data = TLObject.read(BytesIO(answer))
+                SecurityCheckMismatch.check(isinstance(server_dh_inner_data, raw.types.ServerDHInnerData),
+                                            "decrypted DH response type")
+                SecurityCheckMismatch.check(server_dh_inner_data.nonce == nonce and server_dh_inner_data.server_nonce == server_nonce,
+                                            "inner DH nonces match request")
+                SecurityCheckMismatch.check(answer_with_hash[:20] == sha1(server_dh_inner_data.write()).digest(),
+                                            "DH response SHA1 matches")
+                SecurityCheckMismatch.check(int.from_bytes(server_dh_inner_data.dh_prime, "big") == prime.CURRENT_DH_PRIME,
+                                            "DH prime matches known Telegram prime")
 
                 log.debug("Done decrypting answer")
 
@@ -178,7 +193,7 @@ class Auth:
                 # Step 6
                 g = server_dh_inner_data.g
                 b = int.from_bytes(urandom(256), "big")
-                g_b = pow(g, b, dh_prime).to_bytes(256, "big")
+                g_b = (await self.loop.run_in_executor(None, pow, g, b, dh_prime)).to_bytes(256, "big")
 
                 retry_id = 0
 
@@ -205,7 +220,7 @@ class Auth:
 
                 # Step 7; Step 8
                 g_a = int.from_bytes(server_dh_inner_data.g_a, "big")
-                auth_key = pow(g_a, b, dh_prime).to_bytes(256, "big")
+                auth_key = (await self.loop.run_in_executor(None, pow, g_a, b, dh_prime)).to_bytes(256, "big")
                 server_nonce = server_nonce.to_bytes(16, "little", signed=True)
 
                 self._check_dh_answer(set_client_dh_params_answer, new_nonce, auth_key)

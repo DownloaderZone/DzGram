@@ -259,13 +259,14 @@ class SaveFile:
 
             _acked = [0]
             _starting_part = file_part
-            n_workers = pool_size * 2
+            workers_per_session = max(1, int(os.environ.get("DZGRAM_BOT_UPLOAD_WORKERS", 4))) if is_bot else 2
+            n_workers = pool_size * workers_per_session
             queue = asyncio.Queue(n_workers)
             from pyrogram.client import ReadAhead
             budget = ReadAhead(self.read_ahead_slots)
             workers = [
                 self.loop.create_task(worker(pool[i % len(pool)]))
-                for i in range(len(pool) * 2)
+                for i in range(len(pool) * workers_per_session)
             ]
             next_batch_task = None
             _pacer = AdaptiveBucket(rate=rate_limit, ceiling=max(rate_limit, 300),
@@ -282,7 +283,7 @@ class SaveFile:
                     if session in worker_sessions:
                         continue
                     worker_sessions.append(session)
-                    workers.extend(self.loop.create_task(worker(session)) for _ in range(2))
+                    workers.extend(self.loop.create_task(worker(session)) for _ in range(workers_per_session))
 
             async def grow_pool():
                 expansion = self.loop.create_task(get_upload_sessions(self, dc_id, pool_size))

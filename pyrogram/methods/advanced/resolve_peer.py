@@ -61,6 +61,11 @@ class ResolvePeer:
         if peer_id in ("self", "me"):
             return raw.types.InputPeerSelf()
 
+        # Configuration stores chat IDs as strings (especially MongoDB/env
+        # settings). Signed IDs are chat identifiers, never phone numbers.
+        if isinstance(peer_id, str) and re.fullmatch(r"-\d+", peer_id.strip()):
+            peer_id = int(peer_id)
+
         try:
             return await self.storage.get_peer_by_id(peer_id)
         except KeyError:
