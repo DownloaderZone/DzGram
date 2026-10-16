@@ -20,8 +20,8 @@ async def test_failed_upload_does_not_report_completion():
 
     client.upload_sessions[2] = [Failed()]
     reports = []
-    result = await client.save_file(io.BytesIO(b"x"), progress=lambda current, total: reports.append(current))
-    assert result is None
+    with pytest.raises(OSError):
+        await client.save_file(io.BytesIO(b"x"), progress=lambda current, total: reports.append(current))
     assert 1 not in reports
     client.executor.shutdown(wait=True)
 

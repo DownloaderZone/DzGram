@@ -338,8 +338,7 @@ class TestParallelUpload:
         fp = io.BytesIO(data)
         fp.name = "test.bin"
 
-        result = await client.save_file(fp)
-
-        # The failed part is no longer silently swallowed: the upload aborts
-        # and returns None instead of a corrupt InputFile.
-        assert result is None
+        # The failed part is no longer silently swallowed: the upload aborts by
+        # raising instead of returning None or a corrupt InputFile.
+        with pytest.raises(OSError):
+            await client.save_file(fp)

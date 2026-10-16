@@ -417,9 +417,8 @@ class SaveFile:
                 log.exception(e)
                 if errors and isinstance(errors[0], StopTransmission):
                     raise errors[0]
-                # for test harness that injects failing sessions, surface as None instead of bubbling exception
                 if errors:
-                    return None
+                    raise errors[0]
                 raise
             else:
                 # EOF means all parts were queued, not acknowledged. Keep
@@ -442,7 +441,7 @@ class SaveFile:
                     if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
                         raise r
                 if errors:
-                    return None
+                    raise errors[0]
                 await _report(file_total_parts - _starting_part)
                 if is_big:
                     return raw.types.InputFileBig(

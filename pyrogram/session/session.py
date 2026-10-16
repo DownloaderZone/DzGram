@@ -42,7 +42,7 @@ from pyrogram.errors import (
     ServiceUnavailable,
 )
 from pyrogram.raw.all import layer
-from pyrogram.raw.core import FutureSalts, Int, Message, MsgContainer, TLObject
+from pyrogram.raw.core import FutureSalt, FutureSalts, Int, Message, MsgContainer, TLObject
 
 from .internals import MsgFactory, MsgId
 
@@ -134,6 +134,12 @@ class Session:
     # offloaded to the crypto executor so big transfer chunks don't stall
     # the event loop. Only applies when the Rust message crypto is present.
     INLINE_CRYPTO_MAX = int(os.environ.get("DZGRAM_INLINE_CRYPTO_MAX", 32 * 1024))
+    # A salt changes every 30 minutes and the old one stays valid for a further
+    # 1800 seconds, so a session holding a single one is wrong within the hour.
+    # https://core.telegram.org/mtproto/description (Terminology, "Server Salt")
+    FUTURE_SALTS_COUNT = 64
+    FUTURE_SALTS_THRESHOLD = 60
+    FUTURE_SALTS_INTERVAL = 60
 
     CUR_ALWD_INNR_QRYS = (
         raw.functions.InvokeWithoutUpdates,
@@ -169,6 +175,9 @@ class Session:
         self.msg_factory = MsgFactory()
 
         self.salt = 0
+        self.salt_valid_until = 0.0
+        self.future_salts: List[FutureSalt] = []
+        self._future_salts_requested_at = 0.0
 
         self.pending_acks: Set[int] = set()
 
@@ -224,6 +233,9 @@ class Session:
             return asyncio.get_event_loop_policy().get_event_loop()
 
     async def start(self, max_attempts: Optional[int] = None):
+        if self.is_connected.is_set():
+            return
+
         self._stopping = False
         self._start_exc = None
         self._start_active = True
@@ -615,6 +627,11 @@ class Session:
             except (OSError, TimeoutError, RPCError):
                 pass
 
+            try:
+                await self._update_future_salts()
+            except (OSError, TimeoutError, RPCError) as e:
+                log.debug("Could not get future salts - %s - %s", e.__class__.__name__, e)
+
         log.info("PingTask stopped")
 
     async def flush_acks(self):
@@ -634,6 +651,37 @@ class Session:
         log.debug("Sending %s acks", len(ack_ids))
 
         await self.send(raw.types.MsgsAck(msg_ids=ack_ids), False)
+
+    def _current_salt(self, server_time: float) -> int:
+        """Get the salt valid at `server_time`, dropping the ones it has passed."""
+        while self.future_salts and self.future_salts[0].valid_since <= server_time:
+            salt = self.future_salts.pop(0)
+
+            self.salt = salt.salt
+            self.salt_valid_until = salt.valid_until
+
+        return self.salt
+
+    async def _update_future_salts(self) -> None:
+        server_time = MsgId.now()
+
+        if server_time - self._future_salts_requested_at < self.FUTURE_SALTS_INTERVAL:
+            return
+
+        # Promote first, so `salt_valid_until` is the one actually in use right now.
+        self._current_salt(server_time)
+
+        if self.future_salts and self.salt_valid_until - server_time > self.FUTURE_SALTS_THRESHOLD:
+            return
+
+        self._future_salts_requested_at = server_time
+
+        future_salts = await self.send(
+            raw.functions.GetFutureSalts(num=self.FUTURE_SALTS_COUNT),
+            timeout=self.START_TIMEOUT
+        )
+
+        self.future_salts = sorted(future_salts.salts, key=lambda salt: salt.valid_since)
 
     async def _run_update(self, body):
         async with self._update_semaphore:
@@ -729,6 +777,8 @@ class Session:
         message = self.msg_factory(data, len(serialized))
         msg_id = message.msg_id
 
+        salt = self._current_salt(MsgId.now())
+
         if wait_response:
             self.results[msg_id] = Result()
 
@@ -743,7 +793,7 @@ class Session:
                         message.msg_id,
                         message.seq_no,
                         serialized,
-                        self.salt,
+                        salt,
                         self.session_id,
                         self.auth_key,
                         self.auth_key_id
@@ -759,7 +809,7 @@ class Session:
                         message.msg_id,
                         message.seq_no,
                         serialized,
-                        self.salt,
+                        salt,
                         self.session_id,
                         self.auth_key,
                         self.auth_key_id
@@ -772,7 +822,7 @@ class Session:
                 pyrogram.crypto_executor,
                 mtproto.pack,
                 message,
-                self.salt,
+                salt,
                 self.session_id,
                 self.auth_key,
                 self.auth_key_id
