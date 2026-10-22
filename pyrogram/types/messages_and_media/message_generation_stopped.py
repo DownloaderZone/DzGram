@@ -16,31 +16,57 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
+from typing import Optional
+
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, types
 from ..object import Object
+from ..update import Update
 
 
-class MessageGenerationStopped(Object):
-    """This object represents a service message that message generation has stopped.
+class MessageGenerationStopped(Object, Update):
+    """This object describes an update about a user stopping message generation.
 
     Parameters:
-        chat_id (``int``):
-            Chat ID.
+        chat (:obj:`~pyrogram.types.Chat`):
+            Chat in which the message is generated.
 
-        message_id (``int``):
-            Message ID.
+        message_thread_id (``int``, *optional*):
+            Unique identifier of the message thread in which the message is generated.
+
+        draft_id (``int``):
+            Unique identifier of the message draft which was stopped.
     """
 
-    def __init__(self, *, chat_id: int, message_id: int):
+    def __init__(
+        self,
+        *,
+        chat: "types.Chat",
+        draft_id: int,
+        message_thread_id: Optional[int] = None
+    ):
         super().__init__()
 
-        self.chat_id = chat_id
-        self.message_id = message_id
+        self.chat = chat
+        self.message_thread_id = message_thread_id
+        self.draft_id = draft_id
 
     @staticmethod
-    def _parse(update: "raw.types.UpdateMessageGenerationStopped"):
+    async def _parse(
+        client: "pyrogram.Client",
+        update: "raw.types.UpdateUserTyping",
+        users: dict,
+        chats: dict
+    ) -> "MessageGenerationStopped":
+        action: "raw.types.SendMessageStopDraftAction" = update.action
+        raw_chat = (
+            users.get(getattr(update, "user_id", None))
+            or chats.get(getattr(update, "chat_id", None))
+            or chats.get(getattr(update, "channel_id", None))
+        )
+
         return MessageGenerationStopped(
-            chat_id=update.chat_id,
-            message_id=update.message_id,
+            chat=types.Chat._parse_chat(client, raw_chat),
+            message_thread_id=getattr(update, "top_msg_id", None),
+            draft_id=action.random_id,
         )

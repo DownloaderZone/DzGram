@@ -18,16 +18,20 @@
 
 from .add_contact import AddContact
 from .delete_contacts import DeleteContacts
+from .export_no_paid_messages_token import ExportNoPaidMessagesToken
 from .get_contacts import GetContacts
 from .get_contacts_count import GetContactsCount
 from .import_contacts import ImportContacts
+from .import_no_paid_messages_token import ImportNoPaidMessagesToken
 
 
 class Contacts(
     AddContact,
     DeleteContacts,
+    ExportNoPaidMessagesToken,
     GetContacts,
     GetContactsCount,
     ImportContacts,
+    ImportNoPaidMessagesToken,
 ):
     pass

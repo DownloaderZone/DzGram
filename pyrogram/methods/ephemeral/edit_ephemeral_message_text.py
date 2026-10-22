@@ -41,6 +41,7 @@ class EditEphemeralMessageText:
         ]] = None,
         rich_text: Optional[str] = None,
         rich_text_parse_mode: Optional["enums.ParseMode"] = None,
+        receiver_id: Optional[Union[int, str]] = None,
     ) -> "types.Message":
         """Edit the text of an ephemeral message.
 
@@ -74,6 +75,10 @@ class EditEphemeralMessageText:
             rich_text_parse_mode (:obj:`~pyrogram.enums.ParseMode`, *optional*):
                 Parse mode for ``rich_text``. Defaults to Markdown.
 
+            receiver_id (``int`` | ``str``, *optional*):
+                Unique identifier (int) or username (str) of the user who received the ephemeral message.
+                Required by the current API layer.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the edited ephemeral message is returned.
 
@@ -81,8 +86,13 @@ class EditEphemeralMessageText:
             .. code-block:: python
 
                 # Edit an ephemeral message
-                await app.edit_ephemeral_message_text(chat_id, message_id, "new text")
+                await app.edit_ephemeral_message_text(chat_id, message_id, "new text", receiver_id=user_id)
         """
+        if receiver_id is None:
+            raise ValueError("receiver_id is required")
+
+        receiver = await utils.get_input_user(self, receiver_id)
+
         if rich_text is not None:
             if rich_text_parse_mode == enums.ParseMode.HTML:
                 rich_message = raw.types.InputRichMessageHTML(
@@ -94,8 +104,9 @@ class EditEphemeralMessageText:
                 )
 
             r = await self.invoke(
-                raw.functions.ephemeral.EditText(
+                raw.functions.ephemeral.EditMessage(
                     peer=await self.resolve_peer(chat_id),
+                    receiver_id=receiver,
                     id=message_id,
                     message="",
                     rich_message=rich_message,
@@ -106,8 +117,9 @@ class EditEphemeralMessageText:
             plain_text, entities = (await utils.parse_text_entities(self, text, parse_mode, entities)).values()
 
             r = await self.invoke(
-                raw.functions.ephemeral.EditText(
+                raw.functions.ephemeral.EditMessage(
                     peer=await self.resolve_peer(chat_id),
+                    receiver_id=receiver,
                     id=message_id,
                     message=plain_text,
                     entities=entities or None,

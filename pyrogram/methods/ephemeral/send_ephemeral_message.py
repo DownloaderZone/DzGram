@@ -96,6 +96,8 @@ class SendEphemeralMessage:
                 # Send an ephemeral message to a specific user
                 await app.send_ephemeral_message(chat_id, user_id, "Hello!")
         """
+        receiver = await utils.get_input_user(self, receiver_id)
+
         if rich_text is not None:
             if rich_text_parse_mode == enums.ParseMode.HTML:
                 rich_message = raw.types.InputRichMessageHTML(
@@ -109,7 +111,7 @@ class SendEphemeralMessage:
             r = await self.invoke(
                 raw.functions.ephemeral.SendMessage(
                     peer=await self.resolve_peer(chat_id),
-                    receiver_id=await self.resolve_peer(receiver_id),
+                    receiver_id=receiver,
                     message="",
                     random_id=self.rnd_id(),
                     reply_to=await utils._get_reply_message_parameters(self, None, reply_parameters),
@@ -124,7 +126,7 @@ class SendEphemeralMessage:
             r = await self.invoke(
                 raw.functions.ephemeral.SendMessage(
                     peer=await self.resolve_peer(chat_id),
-                    receiver_id=await self.resolve_peer(receiver_id),
+                    receiver_id=receiver,
                     message=plain_text,
                     random_id=self.rnd_id(),
                     entities=entities or None,

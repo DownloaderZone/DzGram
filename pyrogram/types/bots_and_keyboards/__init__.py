@@ -53,8 +53,6 @@ from .switch_inline_query_chosen_chat import SwitchInlineQueryChosenChat
 from .web_app_info import WebAppInfo
 from .managed_bot_created import ManagedBotCreated
 from .managed_bot_updated import ManagedBotUpdated
-from .rich_message_button import RichMessageButton
-from .rich_text_button import RichTextButton
 
 __all__ = [
     "CallbackGame",
@@ -92,6 +90,4 @@ __all__ = [
     "SwitchInlineQueryChosenChat",
     "ManagedBotCreated",
     "ManagedBotUpdated",
-    "RichMessageButton",
-    "RichTextButton",
 ]

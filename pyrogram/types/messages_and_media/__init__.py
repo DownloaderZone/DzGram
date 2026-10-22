@@ -90,7 +90,7 @@ from .rich_block import (
     RichBlockAudio,
     RichBlockAuthorDate,
     RichBlockBlockQuotation,
-    RichBlockButtons,
+    RichBlockButtonRow,
     RichBlockCaption,
     RichBlockChatLink,
     RichBlockCollage,
@@ -100,7 +100,6 @@ from .rich_block import (
     RichBlockDocument,
     RichBlockEmbedded,
     RichBlockEmbeddedPost,
-    RichBlockExpandableBlockQuotation,
     RichBlockFooter,
     RichBlockHeader,
     RichBlockKicker,
@@ -127,9 +126,15 @@ from .rich_block import (
     RichBlockVoiceNote,
 )
 from .rich_message import RichMessage
-from .ephemeral_message_parameters import EphemeralMessageParameters
 from .message_generation_stopped import MessageGenerationStopped
 from .community_chat_joined import CommunityChatJoined
+from .community_peer_link_requests import CommunityPeerLinkRequests
+from .community_peer_request import CommunityPeerRequest
+from .exported_no_paid_messages_token import ExportedNoPaidMessagesToken
+from .input_saved_star_gift import InputSavedStarGift
+from .share_theme import ShareTheme
+from .share_theme_backdrop import ShareThemeBackdrop
+from .star_gift_deposit_payload import StarGiftDepositPayload
 
 __all__ = [
     "Animation",
@@ -203,7 +208,7 @@ __all__ = [
     "RichBlockAudio",
     "RichBlockAuthorDate",
     "RichBlockBlockQuotation",
-    "RichBlockButtons",
+    "RichBlockButtonRow",
     "RichBlockCaption",
     "RichBlockChatLink",
     "RichBlockCollage",
@@ -213,7 +218,6 @@ __all__ = [
     "RichBlockDocument",
     "RichBlockEmbedded",
     "RichBlockEmbeddedPost",
-    "RichBlockExpandableBlockQuotation",
     "RichBlockFooter",
     "RichBlockHeader",
     "RichBlockKicker",
@@ -267,7 +271,13 @@ __all__ = [
     "RichTextTextMention",
     "RichTextUnderline",
     "RichTextUrl",
-    "EphemeralMessageParameters",
     "MessageGenerationStopped",
     "CommunityChatJoined",
+    "CommunityPeerLinkRequests",
+    "CommunityPeerRequest",
+    "ExportedNoPaidMessagesToken",
+    "InputSavedStarGift",
+    "ShareTheme",
+    "ShareThemeBackdrop",
+    "StarGiftDepositPayload",
 ]

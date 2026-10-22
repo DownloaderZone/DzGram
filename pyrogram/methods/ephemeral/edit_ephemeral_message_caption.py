@@ -41,6 +41,7 @@ class EditEphemeralMessageCaption:
         ]] = None,
         show_caption_above_media: Optional[bool] = None,
         rich_message: Optional[str] = None,
+        receiver_id: Optional[Union[int, str]] = None,
     ) -> "types.Message":
         """Edit the caption of an ephemeral media message.
 
@@ -75,6 +76,10 @@ class EditEphemeralMessageCaption:
             rich_message (``str``, *optional*):
                 Rich text (Markdown or HTML) to render a styled caption.
 
+            receiver_id (``int`` | ``str``, *optional*):
+                Unique identifier (int) or username (str) of the user who received the ephemeral message.
+                Required by the current API layer.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the edited ephemeral message is returned.
 
@@ -82,8 +87,13 @@ class EditEphemeralMessageCaption:
             .. code-block:: python
 
                 # Edit an ephemeral message caption
-                await app.edit_ephemeral_message_caption(chat_id, message_id, "new caption")
+                await app.edit_ephemeral_message_caption(chat_id, message_id, "new caption", receiver_id=user_id)
         """
+        if receiver_id is None:
+            raise ValueError("receiver_id is required")
+
+        receiver = await utils.get_input_user(self, receiver_id)
+
         if rich_message is not None:
             if parse_mode == enums.ParseMode.HTML:
                 rich_msg = raw.types.InputRichMessageHTML(html=rich_message)
@@ -99,8 +109,9 @@ class EditEphemeralMessageCaption:
             rich_message_raw = None
 
         r = await self.invoke(
-            raw.functions.ephemeral.EditMessageCaption(
+            raw.functions.ephemeral.EditMessage(
                 peer=await self.resolve_peer(chat_id),
+                receiver_id=receiver,
                 id=message_id,
                 message=message,
                 entities=entities or None,

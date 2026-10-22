@@ -31,25 +31,25 @@ class RichMessage(Object):
         blocks (List of :obj:`~pyrogram.types.RichBlock`):
             Content of the message.
 
-        buttons (List of :obj:`~pyrogram.types.RichMessageButton`, *optional*):
-            Buttons attached to the rich message.
-
         is_rtl (``bool``, *optional*):
             True, if the rich message must be shown right-to-left.
+
+        is_partial (``bool``, *optional*):
+            True, if the rich message is only a part of a larger message.
     """
 
     def __init__(
         self,
         *,
         blocks: List["types.RichBlock"],
-        buttons: Optional[List["types.RichMessageButton"]] = None,
         is_rtl: Optional[bool] = None,
+        is_partial: Optional[bool] = None,
     ):
         super().__init__()
 
         self.blocks = blocks
-        self.buttons = buttons
         self.is_rtl = is_rtl
+        self.is_partial = is_partial
 
     @staticmethod
     async def _parse(
@@ -61,13 +61,6 @@ class RichMessage(Object):
         if isinstance(rich_message, raw.types.RichMessage):
             photos = {photo.id: photo for photo in rich_message.photos}
             documents = {document.id: document for document in rich_message.documents}
-
-            buttons = None
-            if hasattr(rich_message, "buttons") and rich_message.buttons:
-                buttons = [
-                    types.RichMessageButton.read(btn)
-                    for btn in rich_message.buttons
-                ]
 
             return RichMessage(
                 blocks=types.List(
@@ -84,7 +77,7 @@ class RichMessage(Object):
                         for block in rich_message.blocks
                     ]
                 ),
-                buttons=buttons,
                 is_rtl=rich_message.rtl,
+                is_partial=rich_message.part,
             )
 

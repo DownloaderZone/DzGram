@@ -70,9 +70,12 @@ class TransferChatOwnership:
             raise ValueError("The user_id must belong to a user.")
 
         r = await self.invoke(
-            raw.functions.channels.EditCreator(
-                channel=peer_channel,
-                user_id=peer_user,
+            raw.functions.messages.EditChatCreator(
+                peer=peer_channel,
+                user_id=raw.types.InputUser(
+                    user_id=peer_user.user_id,
+                    access_hash=peer_user.access_hash,
+                ),
                 password=compute_password_check(
                     await self.invoke(raw.functions.account.GetPassword()), password
                 ),

@@ -16,31 +16,37 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
+from typing import List
+
 import pyrogram
 from pyrogram import raw, types
-from ..object import Object
 
 
-class RichTextButton(Object):
-    """This object represents a button reference in rich text.
+class GetJoinedCommunities:
+    async def get_joined_communities(
+        self: "pyrogram.Client",
+    ) -> List["types.Chat"]:
+        """Get the communities you are a member of.
 
-    Parameters:
-        button (:obj:`~pyrogram.types.RichMessageButton`):
-            The button.
-    """
+        .. include:: /_includes/usable-by/users.rst
 
-    def __init__(self, *, button: "types.RichMessageButton"):
-        super().__init__()
+        Returns:
+            List of :obj:`~pyrogram.types.Chat`: The joined communities.
 
-        self.button = button
+        Example:
+            .. code-block:: python
 
-    @staticmethod
-    def read(button: "raw.types.RichTextButton"):
-        return RichTextButton(
-            button=types.RichMessageButton.read(button.button),
+                communities = await app.get_joined_communities()
+                for community in communities:
+                    print(community.title)
+        """
+        result = await self.invoke(
+            raw.functions.communities.GetJoinedCommunities()
         )
 
-    async def write(self, client: "pyrogram.Client"):
-        return raw.types.RichTextButton(
-            button=await self.button.write(client),
+        return types.List(
+            [
+                types.Chat._parse_chat(self, chat)
+                for chat in result.chats
+            ]
         )

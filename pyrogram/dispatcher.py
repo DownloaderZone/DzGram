@@ -70,7 +70,7 @@ from pyrogram.raw.types import (
     UpdateBotBusinessConnect,
     UpdateBotPurchasedPaidMedia,
     UpdateManagedBot,
-    UpdateMessageGenerationStopped,
+    UpdateUserTyping, UpdateChatUserTyping, UpdateChannelUserTyping,
 )
 
 log = logging.getLogger(__name__)
@@ -96,7 +96,9 @@ class Dispatcher:
     BOT_BUSINESS_CONNECT_UPDATES = (UpdateBotBusinessConnect,)
     PURCHASED_PAID_MEDIA_UPDATES = (UpdateBotPurchasedPaidMedia,)
     MANAGED_BOT_UPDATES = (UpdateManagedBot,)
-    MESSAGE_GENERATION_STOPPED_UPDATES = (UpdateMessageGenerationStopped,)
+    MESSAGE_GENERATION_STOPPED_UPDATES = (
+        UpdateUserTyping, UpdateChatUserTyping, UpdateChannelUserTyping,
+    )
 
     def __init__(self, client: "pyrogram.Client"):
         self.client = client
@@ -250,8 +252,13 @@ class Dispatcher:
             )
 
         async def message_generation_stopped_parser(update, users, chats):
+            if not isinstance(update.action, raw.types.SendMessageStopDraftAction):
+                return None, type(None)
+
             return (
-                pyrogram.types.MessageGenerationStopped._parse(update),
+                await pyrogram.types.MessageGenerationStopped._parse(
+                    self.client, update, users, chats
+                ),
                 MessageGenerationStoppedHandler
             )
 

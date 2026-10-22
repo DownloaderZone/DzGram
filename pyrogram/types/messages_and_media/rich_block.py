@@ -109,9 +109,6 @@ class RichBlock(Object):
     - :obj:`~pyrogram.types.RichBlockEmbedded`
     - :obj:`~pyrogram.types.RichBlockEmbeddedPost`
     - :obj:`~pyrogram.types.RichBlockChatLink`
-    - :obj:`~pyrogram.types.RichBlockButtons`
-    - :obj:`~pyrogram.types.RichBlockExpandableBlockQuotation`
-    - :obj:`~pyrogram.types.RichBlockDocument`
     - :obj:`~pyrogram.types.RichBlockUnsupported`
     """
 
@@ -201,6 +198,7 @@ class RichBlock(Object):
                     [RichBlockParagraph(text=await types.RichText._parse(client, rich_block.text))]
                 ),
                 credit=await types.RichText._parse(client, rich_block.caption),
+                is_expandable=getattr(rich_block, "collapsed", None),
             )
         if isinstance(rich_block, raw.types.PageBlockPullquote):
             return RichBlockPullQuotation(
@@ -412,14 +410,26 @@ class RichBlock(Object):
                 username=chat.username,
             )
 
-        if isinstance(rich_block, raw.types.RichBlockButtons):
-            return await RichBlockButtons._parse(client, rich_block)
+        if isinstance(rich_block, raw.types.PageBlockDocument):
+            document = documents.get(rich_block.document_id)
 
-        if isinstance(rich_block, raw.types.RichBlockExpandableBlockQuotation):
-            return await RichBlockExpandableBlockQuotation._parse(client, rich_block)
+            return RichBlockDocument(
+                document=types.Document._parse(client, document) if document else None,
+                caption=await types.RichBlockCaption._parse(client, rich_block.caption),
+            )
 
-        if isinstance(rich_block, raw.types.RichBlockDocument):
-            return await RichBlockDocument._parse(client, rich_block)
+        if isinstance(rich_block, raw.types.PageBlockButtonRow):
+            alignment = (
+                0 if rich_block.align_left else
+                1 if rich_block.align_center else
+                2 if rich_block.align_right else
+                None
+            )
+
+            return RichBlockButtonRow(
+                buttons=types.List(rich_block.buttons),
+                alignment=alignment,
+            )
 
         return RichBlockUnsupported()
 
@@ -1436,21 +1446,43 @@ class RichBlockChatLink(RichBlock):
         self.username = username
 
 
-class RichBlockButtons(RichBlock):
-    """A block containing inline buttons for rich messages.
+class RichBlockDocument(RichBlock):
+    """A document block, embedding a file in the message.
 
     Parameters:
-        buttons (List of :obj:`~pyrogram.types.RichMessageButton`):
-            List of buttons.
+        document (:obj:`~pyrogram.types.Document`, *optional*):
+            The document.
+
+        caption (:obj:`~pyrogram.types.RichBlockCaption`, *optional*):
+            Caption of the document.
+    """
+
+    def __init__(
+        self,
+        document: Optional["types.Document"] = None,
+        caption: Optional["RichBlockCaption"] = None,
+    ):
+        super().__init__()
+
+        self.document = document
+        self.caption = caption
+
+
+class RichBlockButtonRow(RichBlock):
+    """A row of buttons in a rich message.
+
+    Parameters:
+        buttons (List of :obj:`~pyrogram.raw.base.PageButton`):
+            Buttons of the row.
 
         alignment (``int``, *optional*):
-            Alignment of buttons.
+            Alignment of the row.
             0 = left, 1 = center, 2 = right.
     """
 
     def __init__(
         self,
-        buttons: List["types.RichMessageButton"],
+        buttons: List["raw.base.PageButton"],
         alignment: Optional[int] = None,
     ):
         super().__init__()
@@ -1458,90 +1490,6 @@ class RichBlockButtons(RichBlock):
         self.buttons = buttons
         self.alignment = alignment
 
-    @staticmethod
-    async def _parse(
-        client: "pyrogram.Client",
-        page_block: "raw.types.RichBlockButtons",
-    ) -> "RichBlockButtons":
-        buttons = types.List(
-            [
-                await types.RichMessageButton._parse(client, button)
-                for button in page_block.buttons
-            ]
-        )
-
-        return RichBlockButtons(
-            buttons=buttons,
-            alignment=page_block.alignment,
-        )
 
 
-class RichBlockExpandableBlockQuotation(RichBlock):
-    """An expandable/collapsible block quotation.
-
-    Parameters:
-        text (:obj:`~pyrogram.types.RichText`):
-            Content of the quotation.
-
-        caption (:obj:`~pyrogram.types.RichText`):
-            Caption, always shown as summary.
-
-        collapsed_by_default (``bool``, *optional*):
-            Whether collapsed by default.
-    """
-
-    def __init__(
-        self,
-        text: "types.RichText",
-        caption: "types.RichText",
-        collapsed_by_default: Optional[bool] = None,
-    ):
-        super().__init__()
-
-        self.text = text
-        self.caption = caption
-        self.collapsed_by_default = collapsed_by_default
-
-    @staticmethod
-    async def _parse(
-        client: "pyrogram.Client",
-        page_block: "raw.types.RichBlockExpandableBlockQuotation",
-    ) -> "RichBlockExpandableBlockQuotation":
-        return RichBlockExpandableBlockQuotation(
-            text=await types.RichText._parse(client, page_block.text),
-            caption=await types.RichText._parse(client, page_block.caption),
-            collapsed_by_default=page_block.collapsed_by_default,
-        )
-
-
-class RichBlockDocument(RichBlock):
-    """A document block in rich messages.
-
-    Parameters:
-        document (:obj:`~pyrogram.types.Document`):
-            The document.
-
-        caption (:obj:`~pyrogram.types.RichText`, *optional*):
-            Caption of the document.
-    """
-
-    def __init__(
-        self,
-        document: "types.Document",
-        caption: Optional["types.RichText"] = None,
-    ):
-        super().__init__()
-
-        self.document = document
-        self.caption = caption
-
-    @staticmethod
-    async def _parse(
-        client: "pyrogram.Client",
-        page_block: "raw.types.RichBlockDocument",
-    ) -> "RichBlockDocument":
-        return RichBlockDocument(
-            document=types.Document._parse(client, page_block.document),
-            caption=await types.RichText._parse(client, page_block.caption),
-        )
 

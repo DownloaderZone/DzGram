@@ -822,20 +822,21 @@ class InputRichBlockThinking(InputRichBlock):
         )
 
 
-class InputRichBlockButtons(InputRichBlock):
-    """A buttons block, displaying a row of interactive buttons.
+class InputRichBlockButtonRow(InputRichBlock):
+    """A button row block, displaying a row of interactive buttons.
 
     Parameters:
-        buttons (List of :obj:`~pyrogram.types.RichMessageButton`):
+        buttons (List of :obj:`~pyrogram.raw.base.PageButton`):
             List of buttons to display.
 
         alignment (``int``, *optional*):
             Alignment of the buttons row.
+            0 = left, 1 = center, 2 = right.
     """
 
     def __init__(
         self,
-        buttons: List["types.RichMessageButton"],
+        buttons: List["raw.base.PageButton"],
         alignment: Optional[int] = None,
     ):
         super().__init__()
@@ -844,23 +845,25 @@ class InputRichBlockButtons(InputRichBlock):
         self.alignment = alignment
 
     def write(self) -> "raw.base.PageBlock":
-        return raw.types.InputRichBlockButtons(
+        return raw.types.PageBlockButtonRow(
             buttons=self.buttons,
-            alignment=self.alignment,
+            align_left=self.alignment == 0,
+            align_center=self.alignment == 1,
+            align_right=self.alignment == 2,
         )
 
 
-class InputRichBlockExpandableBlockQuotation(InputRichBlock):
-    """An expandable block quotation that can be collapsed or expanded.
+class InputRichBlockCollapsedBlockQuotation(InputRichBlock):
+    """A collapsible block quotation.
 
     Parameters:
         text (``str`` | :obj:`~pyrogram.raw.base.RichText`):
             Content of the block quotation.
 
-        caption (``str`` | :obj:`~pyrogram.raw.base.RichText`, *optional*):
-            Caption or summary of the block quotation.
+        caption (``str`` | :obj:`~pyrogram.raw.base.RichText`):
+            Caption, always shown as summary.
 
-        collapsed_by_default (``bool``, *optional*):
+        collapsed (``bool``, *optional*):
             Pass *True* to display the block quotation collapsed by default.
     """
 
@@ -868,19 +871,19 @@ class InputRichBlockExpandableBlockQuotation(InputRichBlock):
         self,
         text: Union[str, "raw.base.RichText"],
         caption: Union[str, "raw.base.RichText"],
-        collapsed_by_default: Optional[bool] = None,
+        collapsed: Optional[bool] = None,
     ):
         super().__init__()
 
         self.text = text
         self.caption = caption
-        self.collapsed_by_default = collapsed_by_default
+        self.collapsed = collapsed
 
     def write(self) -> "raw.base.PageBlock":
-        return raw.types.InputRichBlockExpandableBlockQuotation(
+        return raw.types.PageBlockBlockquote(
+            collapsed=self.collapsed,
             text=_to_rich_text(self.text),
             caption=_to_rich_text(self.caption),
-            collapsed_by_default=self.collapsed_by_default,
         )
 
 
@@ -888,8 +891,9 @@ class InputRichBlockDocument(InputRichBlock):
     """A document block, embedding a file in the message.
 
     Parameters:
-        document (:obj:`~pyrogram.raw.base.InputDocument`):
-            The document to embed.
+        document_id (``int``):
+            The ``id`` field from an :obj:`~pyrogram.raw.types.InputDocument` that
+            represents the document.
 
         caption (``str`` | :obj:`~pyrogram.raw.base.RichText`, *optional*):
             Caption of the document.
@@ -897,16 +901,16 @@ class InputRichBlockDocument(InputRichBlock):
 
     def __init__(
         self,
-        document: "raw.base.InputDocument",
+        document_id: int,
         caption: Optional[Union[str, "raw.base.RichText"]] = None,
     ):
         super().__init__()
 
-        self.document = document
+        self.document_id = document_id
         self.caption = caption
 
     def write(self) -> "raw.base.PageBlock":
-        return raw.types.InputRichBlockDocument(
-            document=self.document,
+        return raw.types.PageBlockDocument(
+            document_id=self.document_id,
             caption=_to_page_caption(text=self.caption),
         )

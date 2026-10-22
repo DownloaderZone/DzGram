@@ -81,6 +81,8 @@ from .edit_message_checklist import EditMessageChecklist
 from .mark_checklist_tasks_as_done import MarkChecklistTasksAsDone
 from .add_poll_option import AddPollOption
 from .delete_poll_option import DeletePollOption
+from .get_share_theme_backdrops import GetShareThemeBackdrops
+from .set_share_theme import SetShareTheme
 
 class Messages(
     CopyMediaGroup,
@@ -147,6 +149,8 @@ class Messages(
     EditMessageChecklist,
     MarkChecklistTasksAsDone,
     AddPollOption,
-    DeletePollOption
+    DeletePollOption,
+    GetShareThemeBackdrops,
+    SetShareTheme
 ):
     pass

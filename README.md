@@ -93,6 +93,15 @@ Upload chunks use a single-copy serialization fast path preserving the MTProto
 wire format. Crypto uses two to four worker threads by default; override this with
 `DZGRAM_CRYPTO_WORKERS` when tuning for your server.
 
+Flood waits are logged (`Upload flood wait ...`) together with the current adaptive
+rate, and every upload logs a summary (bytes, duration, MiB/s, final rate) at
+WARNING when floods occurred or DEBUG otherwise. The pacer is tunable per account
+class with `DZGRAM_*_UPLOAD_FLOOR` and `DZGRAM_*_UPLOAD_STEP` (bot, premium, user),
+plus shared `DZGRAM_UPLOAD_BACKOFF` (rate multiplier per flood, default 0.85) and
+`DZGRAM_UPLOAD_RECOVER` (seconds between successful-part rate increases, default
+0.5). A floor of 1 part/s is only ~0.5 MiB/s, so keep the floor at a sane
+throughput (defaults: 8 parts/s for bots, 4 for users) rather than 1.
+
 `AUTH_KEY_UNREGISTERED` on an existing user session means its saved authorization
 is no longer recognized by Telegram. Generate a new user session string and
 replace `USER_SESSION_STRING` in the application's saved configuration (including
@@ -121,6 +130,13 @@ Connection counts can be tuned before starting your client:
 | User | `DZGRAM_UPLOAD_POOL` (12) | `DZGRAM_DL_POOL` (5) | `DZGRAM_DL_WORKERS` (3) |
 | Bot | `DZGRAM_BOT_UPLOAD_POOL` (8) | `DZGRAM_BOT_DL_POOL` (5) | `DZGRAM_BOT_DL_WORKERS` (3) |
 | Premium | `DZGRAM_PREMIUM_UPLOAD_POOL` (14) | `DZGRAM_PREMIUM_DL_POOL` (6) | `DZGRAM_PREMIUM_DL_WORKERS` (4) |
+
+### API layer
+
+DzGram 2.3.37 targets Telegram layer 232. The update adds the layer 232 schema
+(communities, rich messages, star gifts, share themes and no-paid-messages
+tokens) plus high-level wrappers for the new community, star gift, share theme
+and no-paid-messages token RPCs.
 
 ### Resources
 

@@ -21,12 +21,14 @@ from .auth import Auth
 from .bots import Bots
 from .chats import Chats
 from .chat_topics import ChatTopics
+from .communities import Communities
 from .contacts import Contacts
 from .decorators import Decorators
 from .ephemeral import Ephemeral
 from .invite_links import InviteLinks
 from .messages import Messages
 from .password import Password
+from .payments import Payments
 from .phone import Phone
 from .stickers import Stickers
 from .stories import Stories
@@ -43,11 +45,13 @@ class Methods(
     Bots,
     Chats,
     ChatTopics,
+    Communities,
     Contacts,
     Ephemeral,
     InviteLinks,
     Messages,
     Password,
+    Payments,
     Phone,
     Stickers,
     Stories,

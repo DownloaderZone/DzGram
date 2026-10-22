@@ -379,7 +379,7 @@ class User(Object, Update):
             dc_id=getattr(user.photo, "dc_id", None),
             phone_number=user.phone,
             photo=types.ChatPhoto._parse(client, user.photo, user.id, user.access_hash),
-            restrictions=types.List([types.Restriction._parse(r) for r in user.restriction_reason]) or None,
+            restrictions=types.List([types.Restriction._parse(r) for r in (user.restriction_reason or [])]) or None,
             client=client,
             restricts_new_chats=user.contact_require_premium or None,
             active_usernames=active_usernames,

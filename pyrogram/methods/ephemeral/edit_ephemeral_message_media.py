@@ -37,6 +37,7 @@ class EditEphemeralMessageMedia:
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
         ]] = None,
+        receiver_id: Optional[Union[int, str]] = None,
     ) -> "types.Message":
         """Edit the media of an ephemeral message.
 
@@ -56,6 +57,10 @@ class EditEphemeralMessageMedia:
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
                 instructions to remove reply keyboard or to force a reply from the user.
 
+            receiver_id (``int`` | ``str``, *optional*):
+                Unique identifier (int) or username (str) of the user who received the ephemeral message.
+                Required by the current API layer.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the edited ephemeral message is returned.
 
@@ -66,8 +71,13 @@ class EditEphemeralMessageMedia:
 
                 # Edit an ephemeral message media
                 await app.edit_ephemeral_message_media(chat_id, message_id,
-                    InputMediaPhoto("new_photo.jpg"))
+                    InputMediaPhoto("new_photo.jpg"), receiver_id=user_id)
         """
+        if receiver_id is None:
+            raise ValueError("receiver_id is required")
+
+        receiver = await utils.get_input_user(self, receiver_id)
+
         caption = media.caption
         parse_mode = media.parse_mode
         caption_entities = media.caption_entities
@@ -95,8 +105,9 @@ class EditEphemeralMessageMedia:
         )
 
         r = await self.invoke(
-            raw.functions.ephemeral.EditMessageMedia(
+            raw.functions.ephemeral.EditMessage(
                 peer=await self.resolve_peer(chat_id),
+                receiver_id=receiver,
                 id=message_id,
                 media=raw_media,
                 reply_markup=await reply_markup.write(self) if reply_markup else None,

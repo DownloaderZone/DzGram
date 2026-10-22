@@ -318,6 +318,33 @@ def get_peer_type(peer_id: int) -> str:
     raise ValueError(f"Peer id invalid: {peer_id}")
 
 
+async def get_input_user(client: "pyrogram.Client", user_id: Union[int, str]) -> "raw.base.InputUser":
+    peer = await client.resolve_peer(user_id)
+
+    if isinstance(peer, raw.types.InputPeerUser):
+        return raw.types.InputUser(
+            user_id=peer.user_id,
+            access_hash=peer.access_hash,
+        )
+
+    if isinstance(peer, raw.types.InputPeerSelf):
+        return raw.types.InputUserSelf()
+
+    raise ValueError("The user_id must belong to a user.")
+
+
+async def get_input_channel(client: "pyrogram.Client", channel_id: Union[int, str]) -> "raw.base.InputChannel":
+    peer = await client.resolve_peer(channel_id)
+
+    if isinstance(peer, raw.types.InputPeerChannel):
+        return raw.types.InputChannel(
+            channel_id=peer.channel_id,
+            access_hash=peer.access_hash,
+        )
+
+    raise ValueError("The channel_id must belong to a channel.")
+
+
 def get_channel_id(peer_id: int) -> int:
     if MIN_MONOFORUM_CHANNEL_ID <= peer_id < MAX_MONOFORUM_CHANNEL_ID:
         return MAX_CHANNEL_ID - peer_id

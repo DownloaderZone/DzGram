@@ -38,3 +38,6 @@ class ChatType(AutoName):
 
     CHANNEL = auto()
     "Chat is a channel"
+
+    COMMUNITY = auto()
+    "Chat is a community"

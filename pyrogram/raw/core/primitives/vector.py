@@ -22,7 +22,7 @@ from typing import cast, Union, Any
 from .bool import BoolFalse, BoolTrue, Bool
 from .int import Int, Long
 from ..list import List
-from ..tl_object import TLObject
+from ..tl_object import TLObject, objects
 
 
 class Vector(bytes, TLObject):
@@ -46,11 +46,19 @@ class Vector(bytes, TLObject):
                 BoolTrue.ID,
             ]:
                 return Bool.read(b)
-            # not
-            else:
-                return Int.read(b)
+
+            if e in objects:
+                return TLObject.read(b)
+
+            return Int.read(b)
 
         if size == 8:
+            e = int.from_bytes(b.read(4), "little")
+            b.seek(-4, 1)
+
+            if e in objects:
+                return TLObject.read(b)
+
             return Long.read(b)
 
         return TLObject.read(b)

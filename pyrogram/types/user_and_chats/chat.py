@@ -442,7 +442,7 @@ class Chat(Object):
         active_usernames = types.List(
             [
                 types.Username._parse(u)
-                for u in getattr(user, "usernames", [])
+                for u in (getattr(user, "usernames", None) or [])
             ]
         ) or None
         _tmp_username = None
@@ -464,7 +464,7 @@ class Chat(Object):
             first_name=user.first_name,
             last_name=user.last_name,
             photo=types.ChatPhoto._parse(client, user.photo, peer_id, user.access_hash),
-            restrictions=types.List([types.Restriction._parse(r) for r in user.restriction_reason]) or None,
+            restrictions=types.List([types.Restriction._parse(r) for r in (user.restriction_reason or [])]) or None,
             dc_id=getattr(getattr(user, "photo", None), "dc_id", None),
             client=client,
             active_usernames=active_usernames,
@@ -543,7 +543,7 @@ class Chat(Object):
         active_usernames = types.List(
             [
                 types.Username._parse(u)
-                for u in getattr(channel, "usernames", [])
+                for u in (getattr(channel, "usernames", None) or [])
             ]
         ) or None
         _tmp_username = None
@@ -572,7 +572,7 @@ class Chat(Object):
             restrictions=types.List(
                 [
                     types.Restriction._parse(r)
-                    for r in getattr(channel, "restriction_reason", None)
+                    for r in (getattr(channel, "restriction_reason", None) or [])
                 ]
             ) or None,
             permissions=types.ChatPermissions._parse(getattr(channel, "default_banned_rights", None)),
@@ -804,8 +804,13 @@ class Chat(Object):
         return parsed_chat
 
     @staticmethod
-    def _parse_chat(client, chat: Union[raw.types.Chat, raw.types.User, raw.types.Channel]) -> "Chat":
+    def _parse_chat(client, chat: Union[raw.types.Chat, raw.types.User, raw.types.Channel, raw.types.Community]) -> "Chat":
         if (
+            isinstance(chat, raw.types.Community) or
+            isinstance(chat, raw.types.CommunityForbidden)
+        ):
+            return Chat._parse_community_chat(client, chat)
+        elif (
             isinstance(chat, raw.types.Chat) or
             isinstance(chat, raw.types.ChatForbidden) or
             isinstance(chat, raw.types.ChatEmpty)
@@ -818,6 +823,39 @@ class Chat(Object):
             return Chat._parse_user_chat(client, chat)
         else:
             return Chat._parse_channel_chat(client, chat)
+
+    @staticmethod
+    def _parse_community_chat(client, community: "raw.types.Community") -> "Chat":
+        if isinstance(community, int):
+            return Chat(
+                id=utils.get_channel_id(community),
+                client=client,
+                _raw=None
+            )
+
+        peer_id = utils.get_channel_id(community.id)
+
+        if isinstance(community, raw.types.CommunityForbidden):
+            return Chat(
+                id=peer_id,
+                type=enums.ChatType.COMMUNITY,
+                title=community.title,
+                client=client,
+                is_banned=True,
+                _raw=community
+            )
+
+        return Chat(
+            id=peer_id,
+            type=enums.ChatType.COMMUNITY,
+            title=community.title,
+            is_creator=getattr(community, "creator", None),
+            photo=types.ChatPhoto._parse(client, getattr(community, "photo", None), peer_id, 0),
+            permissions=types.ChatPermissions._parse(getattr(community, "default_banned_rights", None)),
+            dc_id=getattr(getattr(community, "photo", None), "dc_id", None),
+            client=client,
+            _raw=community
+        )
 
     @staticmethod
     def _parse_chat_preview(client, chat_invite: "raw.types.ChatInvite") -> "Chat":

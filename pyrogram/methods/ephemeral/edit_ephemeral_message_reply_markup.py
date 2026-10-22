@@ -20,7 +20,7 @@ import logging
 from typing import Union, Optional
 
 import pyrogram
-from pyrogram import raw, types
+from pyrogram import raw, types, utils
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ class EditEphemeralMessageReplyMarkup:
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
         ]] = None,
+        receiver_id: Optional[Union[int, str]] = None,
     ) -> "types.Message":
         """Edit only the reply markup of an ephemeral message.
 
@@ -52,6 +53,10 @@ class EditEphemeralMessageReplyMarkup:
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
                 instructions to remove reply keyboard or to force a reply from the user.
 
+            receiver_id (``int`` | ``str``, *optional*):
+                Unique identifier (int) or username (str) of the user who received the ephemeral message.
+                Required by the current API layer.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the edited ephemeral message is returned.
 
@@ -64,11 +69,18 @@ class EditEphemeralMessageReplyMarkup:
                 await app.edit_ephemeral_message_reply_markup(
                     chat_id, message_id,
                     InlineKeyboardMarkup([[
-                        InlineKeyboardButton("New button", callback_data="new_data")]]))
+                        InlineKeyboardButton("New button", callback_data="new_data")]]),
+                    receiver_id=user_id)
         """
+        if receiver_id is None:
+            raise ValueError("receiver_id is required")
+
+        receiver = await utils.get_input_user(self, receiver_id)
+
         r = await self.invoke(
-            raw.functions.ephemeral.EditMessageReplyMarkup(
+            raw.functions.ephemeral.EditMessage(
                 peer=await self.resolve_peer(chat_id),
+                receiver_id=receiver,
                 id=message_id,
                 reply_markup=await reply_markup.write(self) if reply_markup else None,
             )

@@ -21,8 +21,8 @@ from pyrogram.raw.core import TLObject
     raw.functions.auth.InitFirebasePnvLogin(api_id=1, api_hash="test", except_ids=[123]),
     raw.functions.wallet.TonConnectSubmitResponse(session_id=1, msg_id=2, body=b"response"),
 ])
-def test_layer_230_wire_roundtrip(value):
-    assert layer == 230
+def test_layer_232_wire_roundtrip(value):
+    assert layer == 232
     encoded = value.write()
     buffer = BytesIO(encoded)
     decoded = TLObject.read(buffer)

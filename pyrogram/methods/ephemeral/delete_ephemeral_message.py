@@ -19,7 +19,7 @@
 from typing import Union
 
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, utils
 
 
 class DeleteEphemeralMessage:
@@ -52,10 +52,12 @@ class DeleteEphemeralMessage:
                 # Delete an ephemeral message
                 await app.delete_ephemeral_message(chat_id, receiver_id, message_id)
         """
+        receiver = await utils.get_input_user(self, receiver_id)
+
         return await self.invoke(
             raw.functions.ephemeral.DeleteMessage(
                 peer=await self.resolve_peer(chat_id),
-                receiver_id=await self.resolve_peer(receiver_id),
+                receiver_id=receiver,
                 id=message_id
             )
         )
