@@ -105,18 +105,22 @@ class AdaptiveBucket(TokenBucket):
     """Increase transfer throughput on success and back off on flood waits."""
 
     def __init__(self, rate: float, ceiling: float, burst: Optional[float] = None,
-                 floor: float = 1.0, step: float = 0.5, backoff: float = 0.85):
+                 floor: float = 1.0, step: float = 0.5, backoff: float = 0.85,
+                 recover_interval: float = 1.0, cooldown: float = 2.0):
         super().__init__(rate, burst)
         self._ceiling = ceiling
         self._floor = floor
         self._step = step
         self._backoff = backoff
+        self._recover_interval = max(0.05, recover_interval)
+        self._cooldown = max(0.0, cooldown)
         self._last_up = time.monotonic()
         self._last_down = 0.0
 
     def on_success(self):
         now = time.monotonic()
-        if now - self._last_up >= 1.0 and now - self._last_down >= 2.0:
+        if (now - self._last_up >= self._recover_interval
+                and now - self._last_down >= self._cooldown):
             self._last_up = now
             self.rate = min(self.rate + self._step, self._ceiling)
 

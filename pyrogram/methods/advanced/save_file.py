@@ -139,8 +139,12 @@ class SaveFile:
                 return None
 
             errors = []
+            _flood_count = 0
+            _flood_seconds = 0.0
+            _started_at = time.monotonic()
 
             async def _send_part(session, data):
+                nonlocal _flood_count, _flood_seconds
                 slept = 0
                 while True:
                     try:
@@ -157,11 +161,19 @@ class SaveFile:
                         if e.value > self.sleep_threshold >= 0:
                             raise
                         slept += e.value
+                        _flood_count += 1
+                        _flood_seconds += e.value
                         if self.sleep_threshold >= 0 and slept > self.sleep_threshold * MAX_FLOOD_WAITS:
                             raise
                         _pacer.on_flood()
                         if is_bot:
                             _pacer.pause(e.value)
+                        if _flood_count == 1 or _flood_count % 10 == 0:
+                            log.warning(
+                                "Upload flood wait %ss (count=%d, total=%ss); "
+                                "adaptive rate now %.1f parts/s",
+                                e.value, _flood_count, _flood_seconds, _pacer.rate,
+                            )
                         await asyncio.sleep(e.value)
 
             async def worker(session):
@@ -225,12 +237,20 @@ class SaveFile:
             if is_bot:
                 rate_limit = int(os.environ.get("DZGRAM_BOT_UPLOAD_RATE", 128))
                 pool_size = min(int(os.environ.get("DZGRAM_BOT_UPLOAD_POOL", 8)), POOL_SIZE)
+                rate_floor = float(os.environ.get("DZGRAM_BOT_UPLOAD_FLOOR", 8))
+                rate_step = float(os.environ.get("DZGRAM_BOT_UPLOAD_STEP", 16))
             elif is_premium:
                 rate_limit = int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_RATE", 300))
                 pool_size = min(int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_POOL", 14)), POOL_SIZE)
+                rate_floor = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_FLOOR", 16))
+                rate_step = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_STEP", 16))
             else:
                 rate_limit = int(os.environ.get("DZGRAM_UPLOAD_RATE", 50))
                 pool_size = min(int(os.environ.get("DZGRAM_UPLOAD_POOL", 12)), POOL_SIZE)
+                rate_floor = float(os.environ.get("DZGRAM_UPLOAD_FLOOR", 4))
+                rate_step = float(os.environ.get("DZGRAM_UPLOAD_STEP", 1))
+            rate_backoff = float(os.environ.get("DZGRAM_UPLOAD_BACKOFF", 0.85))
+            rate_recover = float(os.environ.get("DZGRAM_UPLOAD_RECOVER", 0.5))
 
             is_missing_part = file_id is not None
             pool_cap = 1 if is_missing_part else max(1, math.ceil((file_total_parts - file_part) / 2))
@@ -269,8 +289,16 @@ class SaveFile:
                 for i in range(len(pool) * workers_per_session)
             ]
             next_batch_task = None
-            _pacer = AdaptiveBucket(rate=rate_limit, ceiling=max(rate_limit, 300),
-                                    burst=32 if is_bot else 16, step=16.0 if is_bot else 1.0)
+            _pacer = AdaptiveBucket(
+                rate=rate_limit,
+                ceiling=max(rate_limit, 300),
+                burst=32 if is_bot else 16,
+                floor=max(0.1, rate_floor),
+                step=max(0.1, rate_step),
+                backoff=min(max(rate_backoff, 0.1), 1.0),
+                recover_interval=max(0.05, rate_recover),
+                cooldown=max(0.0, rate_recover * 2),
+            )
             _paced = is_bot or not is_premium
             _stalled_since = 0.0
             _last_reported = -1
@@ -332,6 +360,23 @@ class SaveFile:
                         exc = t.exception()
                         if exc is not None:
                             raise exc
+
+            def _log_summary() -> None:
+                elapsed = max(time.monotonic() - _started_at, 1e-6)
+                uploaded = max(0, file_size - min(file_size, _starting_part * part_size))
+                mib_s = uploaded / elapsed / 1048576
+                if _flood_count:
+                    log.warning(
+                        "Upload finished with %d flood wait(s) totalling %ss: "
+                        "%.1f MiB in %.1fs (%.2f MiB/s), rate %.1f parts/s",
+                        _flood_count, _flood_seconds, uploaded / 1048576,
+                        elapsed, mib_s, _pacer.rate,
+                    )
+                else:
+                    log.debug(
+                        "Upload finished: %.1f MiB in %.1fs (%.2f MiB/s), rate %.1f parts/s",
+                        uploaded / 1048576, elapsed, mib_s, _pacer.rate,
+                    )
 
             try:
                 fp.seek(part_size * file_part)
@@ -398,6 +443,7 @@ class SaveFile:
                             for r in results:
                                 if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
                                     raise r
+                            _log_summary()
                             return None
 
                         if not is_big and not is_missing_part:
@@ -443,6 +489,7 @@ class SaveFile:
                 if errors:
                     raise errors[0]
                 await _report(file_total_parts - _starting_part)
+                _log_summary()
                 if is_big:
                     return raw.types.InputFileBig(
                         id=file_id,
