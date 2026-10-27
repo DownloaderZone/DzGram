@@ -325,7 +325,7 @@ def start(format: bool = False):
         d[qualtype].append(c.qualname)
 
         if c.section == "types":
-            key = c.namespace
+            key = c.typespace
 
             if key not in namespaces_to_types:
                 namespaces_to_types[key] = []

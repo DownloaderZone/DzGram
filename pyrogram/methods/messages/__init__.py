@@ -22,6 +22,7 @@ from .delete_chat_history import DeleteChatHistory
 from .delete_messages import DeleteMessages
 from .download_media import DownloadMedia
 from .edit_cached_media import EditCachedMedia
+from .edit_inline_bot_message_widget_data import EditInlineBotMessageWidgetData
 from .edit_inline_caption import EditInlineCaption
 from .edit_inline_media import EditInlineMedia
 from .edit_inline_reply_markup import EditInlineReplyMarkup
@@ -30,7 +31,12 @@ from .edit_message_caption import EditMessageCaption
 from .edit_message_media import EditMessageMedia
 from .edit_message_reply_markup import EditMessageReplyMarkup
 from .edit_message_text import EditMessageText
+from .edit_message_widget_data import EditMessageWidgetData
+from .edit_widget_data import EditWidgetData
+from .forward_message import ForwardMessage
 from .forward_messages import ForwardMessages
+from .get_all_chats import GetAllChats
+from .get_bot_widget_query_answer import GetBotWidgetQueryAnswer
 from .get_chat_history import GetChatHistory
 from .get_chat_history_count import GetChatHistoryCount
 from .get_custom_emoji_stickers import GetCustomEmojiStickers
@@ -39,6 +45,10 @@ from .get_discussion_replies import GetDiscussionReplies
 from .get_discussion_replies_count import GetDiscussionRepliesCount
 from .get_media_group import GetMediaGroup
 from .get_messages import GetMessages
+from .get_share_theme import GetShareTheme
+from .get_stats_url import GetStatsUrl
+from .get_web_view_result import GetWebViewResult
+from .get_widget_public_data import GetWidgetPublicData
 from .read_chat_history import ReadChatHistory
 from .retract_vote import RetractVote
 from .search_global import SearchGlobal
@@ -62,6 +72,8 @@ from .send_rich_message import SendRichMessage
 from .send_rich_message_draft import SendRichMessageDraft
 from .add_paid_message_reaction import AddPaidMessageReaction
 from .set_reaction import SetReaction
+from .set_bot_widget_query_answer import SetBotWidgetQueryAnswer
+from .set_web_view_result import SetWebViewResult
 from .send_sticker import SendSticker
 from .send_venue import SendVenue
 from .send_video import SendVideo
@@ -91,6 +103,7 @@ class Messages(
     DeleteMessages,
     DownloadMedia,
     EditCachedMedia,
+    EditInlineBotMessageWidgetData,
     EditInlineCaption,
     EditInlineMedia,
     EditInlineReplyMarkup,
@@ -99,7 +112,12 @@ class Messages(
     EditMessageMedia,
     EditMessageReplyMarkup,
     EditMessageText,
+    EditMessageWidgetData,
+    EditWidgetData,
+    ForwardMessage,
     ForwardMessages,
+    GetAllChats,
+    GetBotWidgetQueryAnswer,
     GetChatHistory,
     GetChatHistoryCount,
     GetCustomEmojiStickers,
@@ -108,6 +126,10 @@ class Messages(
     GetDiscussionRepliesCount,
     GetMediaGroup,
     GetMessages,
+    GetShareTheme,
+    GetStatsUrl,
+    GetWebViewResult,
+    GetWidgetPublicData,
     ReadChatHistory,
     RetractVote,
     SearchGlobal,
@@ -139,6 +161,8 @@ class Messages(
     SendVoice,
     AddPaidMessageReaction,
     SetReaction,
+    SetBotWidgetQueryAnswer,
+    SetWebViewResult,
     StopPoll,
     StreamMedia,
     ViewMessages,

@@ -183,5 +183,8 @@ class MessageServiceType(AutoName):
     POLL_OPTION_DELETED = auto()
     "A message with information about a deleted poll option"
 
+    PHONE_NUMBER_REQUEST = auto()
+    "A phone number was requested"
+
     UNKNOWN = auto()
     "This service message is unsupported by the current version of Pyrogram"

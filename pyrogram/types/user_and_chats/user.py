@@ -427,6 +427,8 @@ class User(Object, Update):
             status, date = enums.UserStatus.LAST_WEEK, None
         elif isinstance(user_status, raw.types.UserStatusLastMonth):
             status, date = enums.UserStatus.LAST_MONTH, None
+        elif isinstance(user_status, raw.types.UserStatusHidden):
+            status, date = enums.UserStatus.HIDDEN, None
         else:
             status, date = enums.UserStatus.LONG_AGO, None
 

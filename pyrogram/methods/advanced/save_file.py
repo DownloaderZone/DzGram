@@ -210,6 +210,10 @@ class SaveFile:
 
             file_name = getattr(fp, "name", "file.jpg")
 
+            # Telegram rejects some JPEG aliases (.jpe/.jfif) as photo extensions
+            if os.path.splitext(str(file_name))[1].lower() in {".jpe", ".jfif"}:
+                file_name = os.path.splitext(str(file_name))[0] + ".jpg"
+
             fp.seek(0, os.SEEK_END)
             file_size = fp.tell()
             fp.seek(0)

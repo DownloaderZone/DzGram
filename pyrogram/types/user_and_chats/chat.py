@@ -196,6 +196,9 @@ class Chat(Object):
         is_banned (``bool``, *optional*):
             True, if you are banned in this chat.
 
+        is_kicked (``bool``, *optional*):
+            True, if you were kicked from this chat.
+
         dc_id (``int``, *optional*):
             The chat assigned DC (data center). Available only in case the chat has a photo.
             Note that this information is approximate; it is based on where Telegram stores the current chat photo.
@@ -278,6 +281,7 @@ class Chat(Object):
         is_support: bool = None,
         is_public: bool = None,
         is_banned: bool = None,
+        is_kicked: bool = None,
         banned_until_date: datetime = None,
         title: str = None,
         username: str = None,
@@ -395,6 +399,7 @@ class Chat(Object):
         self.unrestrict_boost_count = unrestrict_boost_count
         self.is_public = is_public
         self.is_banned = is_banned
+        self.is_kicked = is_kicked
         self.banned_until_date = banned_until_date
         self.join_by_request = join_by_request
         self.is_peak_preview = is_peak_preview
@@ -508,6 +513,7 @@ class Chat(Object):
             type=enums.ChatType.GROUP,
             title=chat.title,
             is_creator=getattr(chat, "creator", None),
+            is_kicked=getattr(chat, "kicked", None),
             photo=types.ChatPhoto._parse(client, getattr(chat, "photo", None), peer_id, 0),
             permissions=types.ChatPermissions._parse(getattr(chat, "default_banned_rights", None)),
             members_count=getattr(chat, "participants_count", 0),

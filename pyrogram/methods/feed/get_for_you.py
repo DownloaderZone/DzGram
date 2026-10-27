@@ -1,0 +1,58 @@
+#  Pyrogram - Telegram MTProto API Client Library for Python
+#  Copyright (C) 2017-present Dan <https://github.com/delivrance>
+#
+#  This file is part of Pyrogram.
+#
+#  Pyrogram is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Lesser General Public License as published
+#  by the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  Pyrogram is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public License
+#  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
+
+from typing import Optional
+
+import pyrogram
+from pyrogram import raw, types
+
+
+class GetForYou:
+    async def get_for_you(
+        self: "pyrogram.Client",
+        query: Optional[str] = None,
+        limit: int = 20,
+    ) -> "types.ForYouFeed":
+        """Get the personalised "for you" feed.
+
+        .. include:: /_includes/usable-by/users.rst
+
+        Parameters:
+            query (``str``, *optional*):
+                Search query.
+
+            limit (``int``, *optional*):
+                Maximum number of items to return. Defaults to 20.
+
+        Returns:
+            :obj:`~pyrogram.types.ForYouFeed`: The feed.
+
+        Example:
+            .. code-block:: python
+
+                feed = await app.get_for_you()
+        """
+        return await types.ForYouFeed._parse(
+            self,
+            await self.invoke(
+                raw.functions.feed.GetForYou(
+                    query=query,
+                    limit=limit,
+                )
+            ),
+        )

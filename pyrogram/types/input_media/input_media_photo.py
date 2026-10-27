@@ -121,6 +121,9 @@ class InputMediaPhoto(InputMedia):
             self.media.name = "media"
 
         if is_uploaded_file:
+            # Make sure Telegram accepts the file as a photo (valid extension/format)
+            self.media = utils.prepare_photo_upload(self.media)
+
             # Attempt to process the image locally
             optimized_stream = self.scale_tandroid_photo()
             if optimized_stream:

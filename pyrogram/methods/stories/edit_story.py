@@ -117,6 +117,8 @@ class EditStory:
             try:
                 if isinstance(media, str):
                     if os.path.isfile(media):
+                        if isinstance(content, types.InputStoryContentPhoto):
+                            media = utils.prepare_photo_upload(media)
                         file = await self.save_file(media, progress=progress, progress_args=progress_args)
                         thumb = await self.save_file(thumb) if thumb else None
                         if isinstance(content, types.InputStoryContentVideo):
@@ -141,6 +143,8 @@ class EditStory:
                     else:
                         media = utils.get_input_media_from_file_id(media)
                 else:
+                    if isinstance(content, types.InputStoryContentPhoto):
+                        media = utils.prepare_photo_upload(media)
                     file = await self.save_file(media, progress=progress, progress_args=progress_args)
                     thumb = await self.save_file(thumb) if thumb else None
                     if isinstance(content, types.InputStoryContentVideo):

@@ -35,6 +35,12 @@ from pyrogram import raw, enums
 from pyrogram import types
 from pyrogram.file_id import FileId, FileType, PHOTO_TYPES, DOCUMENT_TYPES
 
+try:
+    from PIL import Image
+    HAS_PILLOW = True
+except ImportError:
+    HAS_PILLOW = False
+
 
 PyromodConfig = SimpleNamespace(
     timeout_handler=None,
@@ -61,6 +67,143 @@ async def ainput(prompt: str = "", *, hide: bool = False, loop: Optional[asyncio
     with ThreadPoolExecutor(1) as executor:
         func = functools.partial(getpass if hide else input, prompt)
         return await loop.run_in_executor(executor, func)
+
+
+_JPEG_EXTENSIONS = {".jpg", ".jpeg"}
+_PNG_EXTENSIONS = {".png"}
+
+# Telegram rejects photos that are too heavy to store even when the format and
+# extension are valid. The official clients re-encode lossless images above
+# this threshold and cap the longest side at 2560 px.
+_PHOTO_HEAVY_BYTES = 2 * 1024 * 1024
+_PHOTO_MAX_SIDE = 2560
+
+
+def _photo_size(media) -> int:
+    if isinstance(media, (str, os.PathLike)):
+        return os.path.getsize(media)
+
+    position = media.tell()
+    media.seek(0, os.SEEK_END)
+    size = media.tell()
+    media.seek(position)
+    return size
+
+
+def _read_file_head(media, size: int = 16) -> bytes:
+    if isinstance(media, (str, os.PathLike)):
+        with open(media, "rb") as fp:
+            return fp.read(size)
+
+    position = media.tell()
+    media.seek(0)
+    head = media.read(size)
+    media.seek(position)
+    return head
+
+
+def _copy_photo_stream(media, name: str) -> BytesIO:
+    stream = BytesIO()
+
+    if isinstance(media, (str, os.PathLike)):
+        with open(media, "rb") as fp:
+            stream.write(fp.read())
+    else:
+        position = media.tell()
+        media.seek(0)
+        stream.write(media.read())
+        media.seek(position)
+
+    stream.name = name
+    stream.seek(0)
+    return stream
+
+
+def _transcode_photo(media) -> BytesIO:
+    if isinstance(media, (str, os.PathLike)):
+        source = media
+        name = os.path.basename(media)
+    else:
+        source = media
+        name = getattr(media, "name", "photo")
+
+    if not HAS_PILLOW:
+        raise ValueError(
+            f"{name} is not a valid photo. Install Pillow to allow automatic "
+            "conversion of other image formats."
+        )
+
+    if not isinstance(media, (str, os.PathLike)):
+        if hasattr(media, "seek"):
+            media.seek(0)
+
+    try:
+        with Image.open(source) as image:
+            if getattr(image, "is_animated", False):
+                image.seek(0)
+
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+
+            if max(image.size) > _PHOTO_MAX_SIDE:
+                resample = getattr(Image, "Resampling", Image).LANCZOS
+                image.thumbnail(
+                    (_PHOTO_MAX_SIDE, _PHOTO_MAX_SIDE), resample
+                )
+
+            stream = BytesIO()
+            stream.name = "photo.jpg"
+            image.save(stream, format="JPEG", quality=90, optimize=True)
+            stream.seek(0)
+            return stream
+    except Exception as e:
+        raise ValueError(f"{name} is not a valid photo: {e}") from e
+
+
+def prepare_photo_upload(media):
+    """Normalize a local photo so that Telegram accepts it as a picture.
+
+    Telegram stores uploaded pictures with a strict set of extensions
+    (``.jpg``, ``.jpeg``, ``.gif``, ``.png``, ``.tif``, ``.bmp``) and refuses
+    files whose extension does not match the real image format. Animated GIFs
+    and heavy lossless images can additionally fail with
+    ``PHOTO_SAVE_FILE_INVALID``, because Telegram cannot re-compress them.
+
+    This helper renames valid JPEG/PNG streams, re-encodes other image formats
+    (and heavy PNGs) to JPEG, and caps the longest side at 2560 px, mirroring
+    the official clients. Conversion requires Pillow; without it the original
+    file is kept unless it is definitely unsupported.
+    """
+    name = (
+        os.path.basename(media)
+        if isinstance(media, (str, os.PathLike))
+        else getattr(media, "name", "") or ""
+    )
+    extension = os.path.splitext(str(name))[1].lower()
+
+    head = _read_file_head(media)
+
+    if head.startswith(b"\xff\xd8\xff"):
+        if extension in _JPEG_EXTENSIONS:
+            return media
+
+        return _copy_photo_stream(media, "photo.jpg")
+
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        heavy = HAS_PILLOW and _photo_size(media) > _PHOTO_HEAVY_BYTES
+
+        if extension not in _PNG_EXTENSIONS:
+            if heavy:
+                return _transcode_photo(media)
+
+            return _copy_photo_stream(media, "photo.png")
+
+        if not heavy:
+            return media
+
+        return _transcode_photo(media)
+
+    return _transcode_photo(media)
 
 
 def get_input_media_from_file_id(

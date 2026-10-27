@@ -39,5 +39,8 @@ class UserStatus(AutoName):
     LAST_MONTH = auto()
     """User was seen last month"""
 
+    HIDDEN = auto()
+    """User status is hidden"""
+
     LONG_AGO = auto()
     """User was seen long ago"""

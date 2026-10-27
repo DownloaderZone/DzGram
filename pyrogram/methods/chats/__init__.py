@@ -67,6 +67,7 @@ from .get_chat_audios_count import GetChatAudiosCount
 from .get_chat_audios import GetChatAudios
 from .remove_profile_audio import RemoveProfileAudio
 from .set_profile_audio_position import SetProfileAudioPosition
+from .edit_channel_news import EditChannelNews
 
 
 class Chats(
@@ -121,5 +122,6 @@ class Chats(
     GetChatAudios,
     RemoveProfileAudio,
     SetProfileAudioPosition,
+    EditChannelNews,
 ):
     pass

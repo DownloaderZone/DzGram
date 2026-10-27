@@ -1091,6 +1091,8 @@ class Message(Object, Update):
             elif isinstance(action, raw.types.MessageActionContactSignUp):
                 service_type = enums.MessageServiceType.CONTACT_REGISTERED
                 contact_registered = types.ContactRegistered()
+            elif isinstance(action, raw.types.MessageActionPhoneNumberRequest):
+                service_type = enums.MessageServiceType.PHONE_NUMBER_REQUEST
             elif isinstance(action, raw.types.MessageActionScreenshotTaken):
                 service_type = enums.MessageServiceType.SCREENSHOT_TAKEN
                 screenshot_taken = types.ScreenshotTaken()
@@ -1404,6 +1406,9 @@ class Message(Object, Update):
                     elif isinstance(media.webpage, raw.types.WebPageEmpty):
                         media_type = None
                         web_page_url = getattr(media.webpage, "url", None)
+                    elif isinstance(media.webpage, raw.types.WebPageUrlPending):
+                        media_type = None
+                        web_page_url = media.webpage.url
                     else:
                         media_type = None
                         web_page_url = utils.get_first_url(message)

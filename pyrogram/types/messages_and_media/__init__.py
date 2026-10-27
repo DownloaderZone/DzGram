@@ -135,6 +135,20 @@ from .input_saved_star_gift import InputSavedStarGift
 from .share_theme import ShareTheme
 from .share_theme_backdrop import ShareThemeBackdrop
 from .star_gift_deposit_payload import StarGiftDepositPayload
+from .feed_position import FeedPosition
+from .feed_item import (
+    FeedItem,
+    FeedItemMessage,
+    FeedItemMessageGroup,
+    FeedItemInterestCategories,
+)
+from .feed_messages import FeedMessages
+from .for_you_feed import ForYouFeed
+from .interest_category import InterestCategory
+from .interest_categories import InterestCategories
+from .web_view_result import WebViewResult
+from .widget_public_data import WidgetPublicData
+from .bot_widget_query_answer import BotWidgetQueryAnswer
 
 __all__ = [
     "Animation",
@@ -280,4 +294,16 @@ __all__ = [
     "ShareTheme",
     "ShareThemeBackdrop",
     "StarGiftDepositPayload",
+    "FeedPosition",
+    "FeedItem",
+    "FeedItemMessage",
+    "FeedItemMessageGroup",
+    "FeedItemInterestCategories",
+    "FeedMessages",
+    "ForYouFeed",
+    "InterestCategory",
+    "InterestCategories",
+    "WebViewResult",
+    "WidgetPublicData",
+    "BotWidgetQueryAnswer",
 ]

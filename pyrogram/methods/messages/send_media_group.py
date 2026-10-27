@@ -146,7 +146,7 @@ class SendMediaGroup:
                                 business_connection_id=business_connection_id,
                                 peer=await self.resolve_peer(chat_id),
                                 media=raw.types.InputMediaUploadedPhoto(
-                                    file=await self.save_file(i.media),
+                                    file=await self.save_file(utils.prepare_photo_upload(i.media)),
                                     spoiler=i.has_spoiler
                                 )
                             )
@@ -192,7 +192,7 @@ class SendMediaGroup:
                             business_connection_id=business_connection_id,
                             peer=await self.resolve_peer(chat_id),
                             media=raw.types.InputMediaUploadedPhoto(
-                                file=await self.save_file(i.media),
+                                file=await self.save_file(utils.prepare_photo_upload(i.media)),
                                 spoiler=i.has_spoiler
                             )
                         )

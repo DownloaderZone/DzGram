@@ -133,10 +133,17 @@ Connection counts can be tuned before starting your client:
 
 ### API layer
 
-DzGram 2.3.37 targets Telegram layer 232. The update adds the layer 232 schema
-(communities, rich messages, star gifts, share themes and no-paid-messages
-tokens) plus high-level wrappers for the new community, star gift, share theme
-and no-paid-messages token RPCs.
+DzGram 2.3.38 targets Telegram layer 233. The update adds the layer 233 schema
+(agent providers, feeds, widgets, hidden user statuses and news channels) plus
+high-level wrappers for the new agent, feed, widget, stats, folder and contact
+card RPCs.
+
+It also validates and normalises local photo uploads, converting unsupported
+image formats (for example GIF) and heavy lossless PNGs to JPEG when Pillow is
+available (installed with `dzgram[fast]`), fixing extensions such as
+`.jpe`/`.jfif` that Telegram refuses as photos, and capping oversized images the
+way the official clients do. Animated GIFs should still be sent with
+`send_animation`, which keeps them animated.
 
 ### Resources
 

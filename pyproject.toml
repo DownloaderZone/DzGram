@@ -100,6 +100,7 @@ docs = [
 ]
 
 fast = [
+    "pillow>=10.0.0",
     "warpcrypto>=2.0.5",
     "uvloop>=0.22.1"
 ]

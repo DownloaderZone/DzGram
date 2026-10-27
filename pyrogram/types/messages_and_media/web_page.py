@@ -130,6 +130,13 @@ class WebPage(Object):
 
     @staticmethod
     def _parse(client, webpage: "raw.types.WebPage") -> "WebPage":
+        if isinstance(webpage, raw.types.WebPageUrlPending):
+            return WebPage(
+                id="0",
+                url=webpage.url,
+                display_url=webpage.url,
+            )
+
         audio = None
         document = None
         photo = None

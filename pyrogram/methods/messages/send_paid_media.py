@@ -136,7 +136,7 @@ class SendPaidMedia:
                             raw.functions.messages.UploadMedia(
                                 peer=await self.resolve_peer(chat_id),
                                 media=raw.types.InputMediaUploadedPhoto(
-                                    file=await self.save_file(i.media)
+                                    file=await self.save_file(utils.prepare_photo_upload(i.media))
                                 )
                             )
                         )
@@ -172,7 +172,7 @@ class SendPaidMedia:
                         raw.functions.messages.UploadMedia(
                             peer=await self.resolve_peer(chat_id),
                             media=raw.types.InputMediaUploadedPhoto(
-                                file=await self.save_file(i.media)
+                                file=await self.save_file(utils.prepare_photo_upload(i.media))
                             )
                         )
                     )
@@ -191,9 +191,10 @@ class SendPaidMedia:
                     is_uploaded_file = is_bytes_io or os.path.isfile(i.cover)
                     is_external_url = not is_uploaded_file and re.match("^https?://", i.cover)
                     if is_bytes_io and not hasattr(i.cover, "name"):
-                        cover.name = "cover.jpg"
+                        i.cover.name = "cover.jpg"
 
                     if is_uploaded_file:
+                        i.cover = utils.prepare_photo_upload(i.cover)
                         video_cover_file = await self.invoke(
                             raw.functions.messages.UploadMedia(
                                 business_connection_id=business_connection_id,

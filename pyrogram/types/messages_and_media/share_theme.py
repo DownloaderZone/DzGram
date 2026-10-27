@@ -53,6 +53,14 @@ class ShareTheme(Object):
         self.backdrop_id = backdrop_id
         self.emojis = emojis
 
+    @staticmethod
+    def _parse(theme: "raw.base.ShareTheme") -> "ShareTheme":
+        if isinstance(theme, raw.types.ShareThemeGift):
+            return ShareTheme(gift=theme.stargift)
+        if isinstance(theme, raw.types.ShareThemeEmojiBackdrop):
+            return ShareTheme(backdrop_id=theme.backdrop_id, emojis=theme.emojis)
+        return ShareTheme()
+
     async def write(self, client: "pyrogram.Client") -> "raw.base.ShareTheme":
         if self.gift is not None:
             return raw.types.InputShareThemeGift(

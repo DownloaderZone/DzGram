@@ -22,6 +22,7 @@ from .export_no_paid_messages_token import ExportNoPaidMessagesToken
 from .get_contacts import GetContacts
 from .get_contacts_count import GetContactsCount
 from .import_contacts import ImportContacts
+from .import_card import ImportCard
 from .import_no_paid_messages_token import ImportNoPaidMessagesToken
 
 
@@ -32,6 +33,7 @@ class Contacts(
     GetContacts,
     GetContactsCount,
     ImportContacts,
+    ImportCard,
     ImportNoPaidMessagesToken,
 ):
     pass

@@ -168,6 +168,7 @@ class InputMediaVideo(InputMedia):
             if cover_is_bytes_io and not hasattr(cover, "name"):
                 cover.name = "cover.jpg"
             if cover_is_uploaded_file:
+                cover = utils.prepare_photo_upload(cover)
                 coverfile = await client.invoke(
                     raw.functions.messages.UploadMedia(
                         business_connection_id=business_connection_id,
