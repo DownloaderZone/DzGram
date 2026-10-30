@@ -93,6 +93,15 @@ Upload chunks use a single-copy serialization fast path preserving the MTProto
 wire format. Crypto uses two to four worker threads by default; override this with
 `DZGRAM_CRYPTO_WORKERS` when tuning for your server.
 
+Shared media connections allow at most four in-flight RPCs by default
+(`DZGRAM_MAX_INFLIGHT_MEDIA`). This keeps simultaneous large uploads from
+multiplying unbounded writes on the same socket. A part that exhausts a
+connection's retries is resent through another ready pool connection (three
+attempts by default, `DZGRAM_UPLOAD_PART_RETRIES`). Worker shutdown is bounded,
+so a broken connection cannot leave `save_file()` stuck forever after the error.
+The no-progress timeout defaults to 180 seconds and can be adjusted with
+`DZGRAM_UPLOAD_STALL_TIMEOUT`.
+
 Flood waits are logged (`Upload flood wait ...`) together with the current adaptive
 rate, and every upload logs a summary (bytes, duration, MiB/s, final rate) at
 WARNING when floods occurred or DEBUG otherwise. The pacer is tunable per account

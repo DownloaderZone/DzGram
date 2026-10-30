@@ -127,10 +127,11 @@ class Session:
     MAX_SKEW_BEHIND = 300
     MAX_SKEW_BREACHES = 3
     MAX_INFLIGHT_PACKETS = int(os.environ.get("DZGRAM_MAX_INFLIGHT_PACKETS", 32))
-    # Bounds concurrent invokes on a single media session. 0 (default) leaves
-    # media sessions uncapped, matching historical throughput; set to a
-    # positive value to throttle bursts per connection.
-    MAX_INFLIGHT_MEDIA = int(os.environ.get("DZGRAM_MAX_INFLIGHT_MEDIA", 0))
+    # Bound concurrent invokes on each shared media connection. Upload pools
+    # are reused by simultaneous files, so leaving this unlimited lets every
+    # transfer multiply the pressure on the same TCP writer and can end in a
+    # broken pipe. Four keeps the connections full without unbounded bursts.
+    MAX_INFLIGHT_MEDIA = int(os.environ.get("DZGRAM_MAX_INFLIGHT_MEDIA", 4))
     # Payloads at or below this size are encrypted inline; larger ones are
     # offloaded to the crypto executor so big transfer chunks don't stall
     # the event loop. Only applies when the Rust message crypto is present.

@@ -334,6 +334,9 @@ class TestParallelUpload:
         failing = FakeUploadSession()
         failing.fail_on = 0
         self._patch_sessions(client, monkeypatch, [failing])
+        monkeypatch.setattr(
+            "pyrogram.methods.advanced.save_file.UPLOAD_PART_RETRIES", 1
+        )
 
         fp = io.BytesIO(data)
         fp.name = "test.bin"

@@ -5,6 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from pyrogram import Client, raw
+from pyrogram.methods.advanced import save_file as save_file_module
+from pyrogram.methods.advanced.save_file import _wait_upload_workers
 from pyrogram.session import Session
 from tests.test_media import FakeStorage, FakeMediaSession, PART_SIZE, CHUNK_SIZE, make_file_id
 
@@ -69,6 +71,67 @@ async def test_missing_upload_part_sends_only_requested_part():
     assert result is None
     assert parts == [(1, b"b" * PART_SIZE)]
     client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_upload_part_fails_over_to_another_ready_session(monkeypatch):
+    client = Client("failover", api_id=1, api_hash="test")
+    client.storage = FakeStorage()
+    monkeypatch.setattr(save_file_module, "UPLOAD_PART_RETRIES", 2)
+
+    class Failed:
+        def __init__(self):
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+            self.is_restarting = False
+
+        async def invoke(self, query, **kwargs):
+            raise OSError("broken pipe")
+
+    class Healthy:
+        def __init__(self):
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+            self.is_restarting = False
+            self.parts = []
+
+        async def invoke(self, query, **kwargs):
+            self.parts.append(query.file_part)
+            return True
+
+    failed = Failed()
+    healthy = Healthy()
+    client.upload_sessions[2] = [failed, healthy]
+
+    result = await client.save_file(io.BytesIO(b"x" * (4 * PART_SIZE)))
+
+    assert result.parts == 4
+    assert sorted(healthy.parts) == [0, 1, 2, 3]
+    assert not failed.is_connected.is_set()
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_upload_worker_cleanup_is_bounded():
+    release = asyncio.Event()
+
+    async def ignores_first_cancellation():
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    task = asyncio.create_task(ignores_first_cancellation())
+    await asyncio.sleep(0)
+    results = await _wait_upload_workers(
+        [task],
+        cancel=True,
+        timeout=0.01,
+    )
+
+    assert any(isinstance(result, TimeoutError) for result in results)
+    release.set()
+    await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio

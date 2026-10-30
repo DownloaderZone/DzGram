@@ -42,26 +42,85 @@ PART_SIZE = 512 * 1024
 POOL_SIZE = 20
 READ_BUFFER = 4 * 1024 * 1024
 MAX_BATCH = 4 * 1024 * 1024
-STALL_TIMEOUT = 900
-UPLOAD_MEDIA_TIMEOUT = 60
+STALL_TIMEOUT = int(os.environ.get("DZGRAM_UPLOAD_STALL_TIMEOUT", 180))
+UPLOAD_MEDIA_TIMEOUT = int(os.environ.get("DZGRAM_UPLOAD_TIMEOUT", 60))
+UPLOAD_PART_RETRIES = max(1, int(os.environ.get("DZGRAM_UPLOAD_PART_RETRIES", 3)))
+UPLOAD_SESSION_RETRIES = max(1, int(os.environ.get("DZGRAM_UPLOAD_SESSION_RETRIES", 3)))
+UPLOAD_WORKER_SHUTDOWN_TIMEOUT = max(
+    0.1, float(os.environ.get("DZGRAM_UPLOAD_WORKER_SHUTDOWN_TIMEOUT", 10))
+)
 MAX_FLOOD_WAITS = Session.MAX_RETRIES
 
 
+class UploadPartRejected(OSError):
+    """Telegram returned false for an upload part that can be sent again."""
+
+
+def _consume_task_result(task: asyncio.Task) -> None:
+    try:
+        task.exception()
+    except BaseException:
+        pass
+
+
+async def _wait_upload_workers(
+    workers: list,
+    *,
+    cancel: bool = False,
+    timeout: float = UPLOAD_WORKER_SHUTDOWN_TIMEOUT,
+) -> list:
+    """Collect upload workers without allowing cleanup to block forever."""
+    if not workers:
+        return []
+
+    if cancel:
+        for task in workers:
+            if not task.done():
+                task.cancel()
+
+    done, pending = await asyncio.wait(workers, timeout=timeout)
+    results = []
+
+    for task in done:
+        if task.cancelled():
+            results.append(asyncio.CancelledError())
+            continue
+        try:
+            results.append(task.result())
+        except BaseException as e:
+            results.append(e)
+
+    if pending:
+        for task in pending:
+            task.cancel()
+            task.add_done_callback(_consume_task_result)
+        results.append(
+            TimeoutError(
+                f"Upload worker cleanup timed out after {timeout:g}s "
+                f"({len(pending)} worker(s) did not stop)"
+            )
+        )
+
+    return results
+
+
 async def _stop_upload_workers(queue: asyncio.Queue, workers: list) -> list:
+    active = [task for task in workers if not task.done()]
     delivered = 0
-    for _ in workers:
-        if all(t.done() for t in workers):
+    for _ in active:
+        if all(task.done() for task in active):
             break
         try:
-            await asyncio.wait_for(queue.put(None), UPLOAD_MEDIA_TIMEOUT)
+            await asyncio.wait_for(
+                queue.put(None), UPLOAD_WORKER_SHUTDOWN_TIMEOUT
+            )
         except asyncio.TimeoutError:
             break
         delivered += 1
-    if delivered < len(workers):
-        for t in workers:
-            if not t.done():
-                t.cancel()
-    return await asyncio.gather(*workers, return_exceptions=True)
+    return await _wait_upload_workers(
+        workers,
+        cancel=delivered < len(active),
+    )
 
 
 async def _create_upload_session(client: "pyrogram.Client", dc_id: int):
@@ -152,10 +211,15 @@ class SaveFile:
                         if _paced:
                             await _pacer.acquire()
                         accepted = await session.invoke(
-                            data, timeout=UPLOAD_MEDIA_TIMEOUT, sleep_threshold=0
+                            data,
+                            retries=UPLOAD_SESSION_RETRIES,
+                            timeout=UPLOAD_MEDIA_TIMEOUT,
+                            sleep_threshold=0,
                         )
                         if not accepted:
-                            raise OSError("Upload part not accepted by the server")
+                            raise UploadPartRejected(
+                                "Upload part not accepted by the server"
+                            )
                         _pacer.on_success()
                         return
                     except (FloodWait, FloodPremiumWait) as e:
@@ -177,13 +241,62 @@ class SaveFile:
                             )
                         await asyncio.sleep(e.value)
 
+            def _next_upload_session(current):
+                if not worker_sessions:
+                    return current
+                try:
+                    start = worker_sessions.index(current)
+                except ValueError:
+                    start = -1
+                for offset in range(1, len(worker_sessions) + 1):
+                    candidate = worker_sessions[
+                        (start + offset) % len(worker_sessions)
+                    ]
+                    connected = getattr(candidate, "is_connected", None)
+                    if connected is None or connected.is_set():
+                        return candidate
+                return current
+
             async def worker(session):
                 while True:
                     data = await queue.get()
                     if data is None:
                         return
                     try:
-                        await _send_part(session, data)
+                        for attempt in range(1, UPLOAD_PART_RETRIES + 1):
+                            try:
+                                await _send_part(session, data)
+                                break
+                            except StopTransmission:
+                                raise
+                            except (OSError, TimeoutError) as e:
+                                if attempt >= UPLOAD_PART_RETRIES:
+                                    raise
+
+                                # A transport failure exhausted the Session's
+                                # own retries. Quarantine that connection and
+                                # resend this exact, idempotent part through a
+                                # different ready pool member. A rejected part
+                                # does not imply that its connection is bad.
+                                if not isinstance(e, UploadPartRejected):
+                                    connected = getattr(
+                                        session, "is_connected", None
+                                    )
+                                    if connected is not None:
+                                        connected.clear()
+
+                                previous = session
+                                session = _next_upload_session(session)
+                                log.warning(
+                                    "Retrying upload part %s after %s "
+                                    "(attempt %d/%d, alternate_session=%s)",
+                                    getattr(data, "file_part", "?"),
+                                    str(e) or type(e).__name__,
+                                    attempt + 1,
+                                    UPLOAD_PART_RETRIES,
+                                    session is not previous,
+                                )
+                                await asyncio.sleep(min(2 ** (attempt - 1), 2))
                         _acked[0] += 1
                     except StopTransmission:
                         errors.append(StopTransmission())
@@ -289,6 +402,7 @@ class SaveFile:
             queue = asyncio.Queue(n_workers)
             from pyrogram.client import ReadAhead
             budget = ReadAhead(self.read_ahead_slots)
+            worker_sessions = list(pool)
             workers = [
                 self.loop.create_task(worker(pool[i % len(pool)]))
                 for i in range(len(pool) * workers_per_session)
@@ -309,7 +423,6 @@ class SaveFile:
             _last_reported = -1
             _last_report_time = 0.0
             pool_growth_task = None
-            worker_sessions = list(pool)
 
             def add_sessions(sessions):
                 for session in sessions:
@@ -513,10 +626,13 @@ class SaveFile:
                 if next_batch_task is not None:
                     next_batch_task.cancel()
                     await asyncio.gather(next_batch_task, return_exceptions=True)
-                for task in workers:
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(*workers, return_exceptions=True)
+                cleanup_results = await _wait_upload_workers(
+                    workers,
+                    cancel=True,
+                )
+                for result in cleanup_results:
+                    if isinstance(result, TimeoutError):
+                        log.error(result)
                 try:
                     budget.release_all()
                 except Exception:
