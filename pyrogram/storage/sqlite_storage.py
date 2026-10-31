@@ -314,7 +314,10 @@ CREATE TABLE update_state
         await self.loop.run_in_executor(self.executor, self.conn.commit)
 
     async def close(self):
+        if self.conn is None:
+            return
         await self.loop.run_in_executor(self.executor, self.conn.close)
+        self.conn = None
         self.executor.shutdown()
         self._executor = None 
         

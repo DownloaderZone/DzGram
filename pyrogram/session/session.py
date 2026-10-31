@@ -411,7 +411,7 @@ class Session:
             try:
                 await self.stop()
                 try:
-                    if getattr(self.client.storage, "conn", True) is None:
+                    if getattr(self.client.storage, "conn", None) is None:
                         await self.client.storage.open()
                 except (Exception, asyncio.CancelledError):
                     pass

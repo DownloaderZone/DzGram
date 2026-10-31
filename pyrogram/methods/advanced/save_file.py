@@ -255,7 +255,10 @@ class SaveFile:
                     connected = getattr(candidate, "is_connected", None)
                     if connected is None or connected.is_set():
                         return candidate
-                return current
+                # All sessions are dead; restart the next one in
+                # round-robin order (this runs synchronously here; the
+                # worker awaits the restart before resending the part).
+                return worker_sessions[(start + 1) % len(worker_sessions)]
 
             async def worker(session):
                 while True:
@@ -296,6 +299,22 @@ class SaveFile:
                                     UPLOAD_PART_RETRIES,
                                     session is not previous,
                                 )
+                                # If we landed on a dead session, restart it
+                                # before the next send attempt so broken pipes
+                                # don't cascade into exhausting all retries.
+                                connected = getattr(
+                                    session, "is_connected", None
+                                )
+                                if connected is not None and not connected.is_set():
+                                    try:
+                                        await session.restart()
+                                    except Exception:
+                                        log.warning(
+                                            "Upload session restart failed for "
+                                            "part %s; continuing with retries",
+                                            getattr(data, "file_part", "?"),
+                                            exc_info=True,
+                                        )
                                 await asyncio.sleep(min(2 ** (attempt - 1), 2))
                         _acked[0] += 1
                     except StopTransmission:

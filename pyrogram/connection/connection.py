@@ -96,8 +96,12 @@ class Connection:
     async def send(self, data: bytes):
         try:
             await self.protocol.send(data)
-        except Exception as e:
-            raise OSError(e)
+        except (BrokenPipeError, ConnectionResetError) as e:
+            raise OSError(e) from e
+        except RuntimeError as e:
+            # Transport is already closed; surface as OSError so the
+            # caller can detect a closed/clogged connection.
+            raise OSError(e) from e
 
     async def recv(self) -> Optional[bytes]:
         return await self.protocol.recv()

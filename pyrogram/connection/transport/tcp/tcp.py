@@ -132,8 +132,14 @@ class TCP:
 
     async def send(self, data: bytes):
         async with self.lock:
-            self.writer.write(data)
-            await self.writer.drain()
+            try:
+                self.writer.write(data)
+                await self.writer.drain()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+            except RuntimeError as e:
+                # Transport is already closed; surface as OSError.
+                raise OSError(e) from e
 
     async def recv(self, length: int = 0):
         chunks = []
