@@ -93,8 +93,9 @@ Upload chunks use a single-copy serialization fast path preserving the MTProto
 wire format. Crypto uses two to four worker threads by default; override this with
 `DZGRAM_CRYPTO_WORKERS` when tuning for your server.
 
-Shared media connections allow at most four in-flight RPCs by default
-(`DZGRAM_MAX_INFLIGHT_MEDIA`). This keeps simultaneous large uploads from
+Shared media connections allow at most six in-flight RPCs by default
+(`DZGRAM_MAX_INFLIGHT_MEDIA`, set it to `0` to disable the bound). This keeps
+simultaneous large uploads from
 multiplying unbounded writes on the same socket. A part that exhausts a
 connection's retries is resent through another ready pool connection (three
 attempts by default, `DZGRAM_UPLOAD_PART_RETRIES`). Worker shutdown is bounded,

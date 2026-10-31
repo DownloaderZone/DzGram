@@ -130,8 +130,11 @@ class Session:
     # Bound concurrent invokes on each shared media connection. Upload pools
     # are reused by simultaneous files, so leaving this unlimited lets every
     # transfer multiply the pressure on the same TCP writer and can end in a
-    # broken pipe. Four keeps the connections full without unbounded bursts.
-    MAX_INFLIGHT_MEDIA = int(os.environ.get("DZGRAM_MAX_INFLIGHT_MEDIA", 4))
+    # broken pipe. Six keeps the connections full without unbounded bursts and
+    # matches the depth external multi-client pipelines built on this library
+    # are tuned for; DzGram's own pools use at most four workers per session.
+    # Set DZGRAM_MAX_INFLIGHT_MEDIA=0 to disable the bound entirely.
+    MAX_INFLIGHT_MEDIA = int(os.environ.get("DZGRAM_MAX_INFLIGHT_MEDIA", 6))
     # Payloads at or below this size are encrypted inline; larger ones are
     # offloaded to the crypto executor so big transfer chunks don't stall
     # the event loop. Only applies when the Rust message crypto is present.

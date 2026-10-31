@@ -72,7 +72,8 @@ class SendVideo:
         schedule_date: datetime = None,
         reply_to_message_id: int = None,
         progress: Callable = None,
-        progress_args: tuple = ()
+        progress_args: tuple = (),
+        video_cover: Optional[Union[str, "io.BytesIO"]] = None
     ) -> Optional["types.Message"]:
         """Send video files.
 
@@ -125,7 +126,11 @@ class SendVideo:
 
             cover (``str`` | :obj:`io.BytesIO`, *optional*):
                 Cover for the video in the message. Pass None to skip cover uploading.
-            
+
+            video_cover (``str`` | :obj:`io.BytesIO`, *optional*):
+                Alias for *cover*, kept for compatibility with Pyrogram forks
+                that name the parameter this way.
+
             start_timestamp (``int``, *optional*):
                 Timestamp from which the video playing must start, in seconds.
 
@@ -236,6 +241,10 @@ class SendVideo:
 
                 await app.send_video("me", "video.mp4", progress=progress)
         """
+
+        # Accept both names: some Pyrogram forks expose this as video_cover.
+        if cover is None:
+            cover = video_cover
 
         if reply_to_message_id and reply_parameters:
             raise ValueError(
