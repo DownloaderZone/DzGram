@@ -102,6 +102,12 @@ so a broken connection cannot leave `save_file()` stuck forever after the error.
 The no-progress timeout defaults to 180 seconds and can be adjusted with
 `DZGRAM_UPLOAD_STALL_TIMEOUT`.
 
+Transports that go away mid-transfer are reported as retryable `OSError`s rather
+than leaking through as `'NoneType' object has no attribute 'write'`. A session
+only publishes a connection once it can send, sends always use the connection they
+validated, and a send on a closed or half-open transport triggers reconnect and
+part fail-over instead of aborting the upload.
+
 Flood waits are logged (`Upload flood wait ...`) together with the current adaptive
 rate, and every upload logs a summary (bytes, duration, MiB/s, final rate) at
 WARNING when floods occurred or DEBUG otherwise. The pacer is tunable per account

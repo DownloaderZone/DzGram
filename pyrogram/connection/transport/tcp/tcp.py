@@ -119,25 +119,43 @@ class TCP:
         self.reader, self.writer = await asyncio.open_connection(sock=self.socket)
 
     def close(self):
-        try:
-            self.writer.close()
-        except AttributeError:
+        writer = self.writer
+
+        if writer is not None:
             try:
-                self.socket.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            finally:
-                time.sleep(0.001)
-                self.socket.close()
+                writer.close()
+            except Exception as e:
+                log.debug("Error closing transport writer: %s %s", type(e).__name__, e)
+            return
+
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        finally:
+            time.sleep(0.001)
+            self.socket.close()
 
     async def send(self, data: bytes):
         async with self.lock:
+            writer = self.writer
+
+            # The writer is only set once connect() completes and stays set
+            # afterwards, so None means the transport was never connected (a
+            # connection replaced while a restart is in flight) and
+            # is_closing() means it was torn down underneath the caller.
+            # Either way this is a transport failure, not a programming error:
+            # raise an OSError so the session reconnects and resends instead of
+            # dying with "'NoneType' object has no attribute 'write'".
+            if writer is None or writer.is_closing():
+                raise ConnectionResetError("Connection is closed")
+
             try:
-                self.writer.write(data)
-                await self.writer.drain()
+                writer.write(data)
+                await writer.drain()
             except (BrokenPipeError, ConnectionResetError):
                 raise
-            except RuntimeError as e:
+            except (RuntimeError, AttributeError) as e:
                 # Transport is already closed; surface as OSError.
                 raise OSError(e) from e
 
@@ -145,10 +163,15 @@ class TCP:
         chunks = []
         received = 0
 
+        reader = self.reader
+
+        if reader is None:
+            return None
+
         while received < length:
             try:
                 chunk = await asyncio.wait_for(
-                    self.reader.read(length - received),
+                    reader.read(length - received),
                     TCP.TIMEOUT
                 )
             except (OSError, asyncio.TimeoutError):

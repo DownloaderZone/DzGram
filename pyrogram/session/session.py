@@ -251,7 +251,18 @@ class Session:
                 self._teardown_started = False
                 self._skew_breaches = 0
                 self._msg_id_floor = 0
-                self.connection = Connection(
+
+                # Drop anything left from an earlier generation before this
+                # attempt builds its own. A direct start() after a stop() that
+                # raced us must not leave a stale socket referenced.
+                if self.connection is not None:
+                    stale, self.connection = self.connection, None
+                    try:
+                        stale.close()
+                    except Exception as e:
+                        log.debug("Error closing stale connection: %s %s", type(e).__name__, e)
+
+                connection = Connection(
                     self.dc_id,
                     self.test_mode,
                     self.client.ipv6,
@@ -265,7 +276,18 @@ class Session:
                 handshake_timeout = min(self.START_TIMEOUT * attempt, self.WAIT_TIMEOUT)
 
                 try:
-                    await self.connection.connect()
+                    try:
+                        await connection.connect()
+                    except BaseException:
+                        # Never leak a socket when the handshake is cancelled
+                        # or connect() exhausts its retries.
+                        connection.close()
+                        raise
+
+                    # Publish the connection only once it can actually send.
+                    # Assigning it earlier exposes a transport whose writer is
+                    # still None to tasks that are racing the restart.
+                    self.connection = connection
 
                     self.recv_task = self._loop().create_task(self.recv_worker())
 
@@ -380,8 +402,9 @@ class Session:
         self._msg_id_floor = 0
 
         if self.connection is not None:
+            connection, self.connection = self.connection, None
             try:
-                result = self.connection.close()
+                result = connection.close()
                 if asyncio.iscoroutine(result):
                     await result
             except (Exception, asyncio.CancelledError):
@@ -705,8 +728,14 @@ class Session:
         log.info("NetworkTask started")
 
         while True:
+            connection = self.connection
+
+            if connection is None:
+                log.debug("Receive loop ending: connection is closed")
+                break
+
             try:
-                packet = await self.connection.recv()
+                packet = await connection.recv()
             except TimeoutError:
                 log.debug("Socket read timed out, continuing")
                 continue
@@ -770,7 +799,9 @@ class Session:
         timeout: float = WAIT_TIMEOUT,
         retry: int = 0
     ):
-        if self.connection is None:
+        connection = self.connection
+
+        if connection is None:
             raise OSError("Connection is not established")
 
         serialized = _serialize_file_part(data)
@@ -835,7 +866,7 @@ class Session:
         try:
             try:
                 await asyncio.wait_for(
-                    self.connection.send(payload), timeout or self.WAIT_TIMEOUT
+                    connection.send(payload), timeout or self.WAIT_TIMEOUT
                 )
             except asyncio.TimeoutError:
                 raise TimeoutError("Request send timed out")
@@ -899,8 +930,15 @@ class Session:
         if not self.is_connected.is_set():
             await self.restart()
 
-        if not self.is_connected.is_set() and self._start_exc is not None:
-            raise self._start_exc
+        if not self.is_connected.is_set():
+            if self._start_exc is not None:
+                raise self._start_exc
+
+            # restart() may have been coalesced into a failed attempt that
+            # finished just before this task resumed. Never fall through to a
+            # send on a disconnected session: report a retryable error so the
+            # caller restarts it instead of hitting a dead transport.
+            raise OSError("Session is not connected")
 
     async def invoke(
         self,
@@ -941,9 +979,6 @@ class Session:
         )
 
         while retries > 0:
-            if not self.is_connected.is_set():
-                await self._wait_started()
-
             if isinstance(query, Session.CUR_ALWD_INNR_QRYS):
                 inner_query = query.query
             else:
@@ -952,6 +987,12 @@ class Session:
             query_name = ".".join(inner_query.QUALNAME.split(".")[1:])
 
             try:
+                if not self.is_connected.is_set():
+                    # Inside the retry loop: a restart that loses the race with
+                    # this task raises a retryable OSError rather than escaping
+                    # to the caller.
+                    await self._wait_started()
+
                 return await self.send(query, timeout=timeout)
             except (FloodWait, FloodPremiumWait) as e:
                 amount = e.value

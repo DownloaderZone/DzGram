@@ -27,6 +27,17 @@ from ..session.internals import DataCenter
 log = logging.getLogger(__name__)
 
 
+def _close_quietly(protocol: Optional["TCP"]) -> None:
+    """Close a transport without letting teardown errors escape."""
+    if protocol is None:
+        return
+
+    try:
+        protocol.close()
+    except Exception as e:
+        log.debug("Error closing transport: %s %s", type(e).__name__, e)
+
+
 class Connection:
     MAX_RETRIES = 3
 
@@ -60,6 +71,7 @@ class Connection:
         self.mode = self.MODES.get(mode, TCPAbridged)
 
         self.protocol: Optional[TCP] = None
+        self.connected = False
 
         if isinstance(loop, asyncio.AbstractEventLoop):
             self.loop = loop
@@ -67,16 +79,31 @@ class Connection:
             self.loop = asyncio.get_event_loop()
 
     async def connect(self):
+        # A re-connect must never leave the previous transport referenced, so
+        # drop it first: this object can own at most one live socket.
+        self._drop_protocol()
+
         for i in range(Connection.MAX_RETRIES):
-            self.protocol = self.mode(self.ipv6, self.proxy, loop=self.loop)
+            # Build the transport locally and publish it only once it can
+            # actually send. Publishing before connect() is what exposed a
+            # writer that was still None to concurrent senders.
+            protocol = self.mode(self.ipv6, self.proxy, loop=self.loop)
 
             try:
                 log.info("Connecting...")
-                await self.protocol.connect(self.address)
+                await protocol.connect(self.address)
             except OSError as e:
                 log.warning("Unable to connect due to network issues: %s", e)
-                self.protocol.close()
+                _close_quietly(protocol)
+            except BaseException:
+                # Cancellation and other failures must not leak the socket
+                # that was being connected.
+                _close_quietly(protocol)
+                raise
             else:
+                self.protocol = protocol
+                self.connected = True
+
                 log.info("Connected! %s DC%s%s - IPv%s - %s",
                          "Test" if self.test_mode else "Production",
                          self.dc_id,
@@ -84,18 +111,30 @@ class Connection:
                          "6" if self.ipv6 else "4",
                          self.mode.__name__,
                 )
-                break
-        else:
-            log.warning("Connection failed! Trying again...")
-            raise TimeoutError
+                return
+
+        log.warning("Connection failed! Trying again...")
+        raise TimeoutError
+
+    def _drop_protocol(self):
+        protocol, self.protocol = self.protocol, None
+        self.connected = False
+        _close_quietly(protocol)
 
     def close(self):
-        self.protocol.close()
+        self._drop_protocol()
         log.info("Disconnected")
 
     async def send(self, data: bytes):
+        protocol = self.protocol
+
+        if protocol is None or not self.connected:
+            # Never let a send reach a half-open transport: callers expect an
+            # OSError they can retry (and reconnect) on.
+            raise OSError("Connection is not established")
+
         try:
-            await self.protocol.send(data)
+            await protocol.send(data)
         except (BrokenPipeError, ConnectionResetError) as e:
             raise OSError(e) from e
         except RuntimeError as e:
@@ -104,4 +143,9 @@ class Connection:
             raise OSError(e) from e
 
     async def recv(self) -> Optional[bytes]:
-        return await self.protocol.recv()
+        protocol = self.protocol
+
+        if protocol is None:
+            return None
+
+        return await protocol.recv()
