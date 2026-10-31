@@ -66,8 +66,8 @@ Uploads use reusable, size-capped connection pools and burst dispatch. User and
 bot transfers adapt their request rate on successful parts and Telegram flood
 waits; Premium transfers skip client-side pacing while still respecting flood
 waits. Progress callbacks are called when the completed byte count changes.
-Bot and Premium downloads prefetch the first parallel wave while the initial chunk is
-in flight. Transfer connections use Telegram's advertised media endpoints, and
+Downloads prefetch the first parallel wave while the initial chunk is in flight.
+Transfer connections use Telegram's advertised media endpoints, and
 TCP receive buffers assemble fragmented packets without repeatedly copying them.
 Bot uploads reuse the download connection pool. Bot pacing starts at 128 upload
 parts/second and 64 download chunks/second, increases on success, and applies
@@ -87,8 +87,9 @@ parts/sec or 8 download chunks/sec per successful second, with flood backoff.
 Upload workers join as individual media connections become ready and stay active
 until queued parts are acknowledged. CDN downloads reuse Telegram's supplied
 hashes rather than fetching hashes again for every chunk.
-Bot uploads use four in-flight workers per connection by default; tune this with
-`DZGRAM_BOT_UPLOAD_WORKERS`. Ready download connections join during pool startup.
+Bot uploads use two in-flight workers per connection and eight connections by
+default; tune these with `DZGRAM_BOT_UPLOAD_WORKERS` and
+`DZGRAM_BOT_UPLOAD_POOL`. Ready download connections join during pool startup.
 Upload chunks use a single-copy serialization fast path preserving the MTProto
 wire format. Crypto uses two to four worker threads by default; override this with
 `DZGRAM_CRYPTO_WORKERS` when tuning for your server.

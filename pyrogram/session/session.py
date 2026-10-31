@@ -427,7 +427,7 @@ class Session:
     def is_restarting(self) -> bool:
         return self._restart_lock.locked() or self._start_active
 
-    async def restart(self):
+    async def restart(self, max_attempts: Optional[int] = None):
         if self._restart_lock.locked():
             await self._restart_done.wait()
             return
@@ -441,7 +441,7 @@ class Session:
                         await self.client.storage.open()
                 except (Exception, asyncio.CancelledError):
                     pass
-                await self.start(max_attempts=self.MAX_RETRIES)
+                await self.start(max_attempts=max_attempts or self.MAX_RETRIES)
             finally:
                 self._restart_done.set()
 

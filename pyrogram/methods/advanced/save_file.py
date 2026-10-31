@@ -149,7 +149,9 @@ async def _create_upload_session(client: "pyrogram.Client", dc_id: int):
     return session
 
 
-async def get_upload_sessions(client: "pyrogram.Client", dc_id: int, count: int):
+async def get_upload_sessions(
+    client: "pyrogram.Client", dc_id: int, count: int, on_ready=None
+):
     if getattr(getattr(client, "me", None), "is_bot", False):
         return await client._get_media_session_pool(dc_id, count)
     async with client.upload_sessions_lock:
@@ -164,18 +166,22 @@ async def get_upload_sessions(client: "pyrogram.Client", dc_id: int, count: int)
             else:
                 await session.stop()
         sessions[:] = ready
+        if on_ready is not None:
+            for session in ready:
+                await on_ready(session)
         while len(sessions) < count:
             batch = min(count - len(sessions), 3)
             async def create():
                 session = await _create_upload_session(client, dc_id)
                 sessions.append(session)
+                return session
 
             pending = [client.loop.create_task(create()) for _ in range(batch)]
             try:
-                results = await asyncio.gather(*pending, return_exceptions=True)
-                for result in results:
-                    if isinstance(result, BaseException):
-                        raise result
+                for pending_result in asyncio.as_completed(pending):
+                    result = await pending_result
+                    if on_ready is not None:
+                        await on_ready(result)
             finally:
                 for task in pending:
                     if not task.done():
@@ -307,7 +313,7 @@ class SaveFile:
                                 )
                                 if connected is not None and not connected.is_set():
                                     try:
-                                        await session.restart()
+                                        await session.restart(max_attempts=2)
                                     except Exception:
                                         log.warning(
                                             "Upload session restart failed for "
@@ -408,7 +414,7 @@ class SaveFile:
                     if is_bot and main is not None and main.is_connected.is_set() and main.dc_id == dc_id:
                         pool = [main]
                     else:
-                        pool = await get_upload_sessions(self, dc_id, 1 if is_bot else pool_size)
+                        pool = await get_upload_sessions(self, dc_id, 1)
             except BaseException:
                 if isinstance(path, (str, PurePath)):
                     fp.close()
@@ -416,7 +422,7 @@ class SaveFile:
 
             _acked = [0]
             _starting_part = file_part
-            workers_per_session = max(1, int(os.environ.get("DZGRAM_BOT_UPLOAD_WORKERS", 4))) if is_bot else 2
+            workers_per_session = max(1, int(os.environ.get("DZGRAM_BOT_UPLOAD_WORKERS", 2))) if is_bot else 2
             n_workers = pool_size * workers_per_session
             queue = asyncio.Queue(n_workers)
             from pyrogram.client import ReadAhead
@@ -450,13 +456,24 @@ class SaveFile:
                     worker_sessions.append(session)
                     workers.extend(self.loop.create_task(worker(session)) for _ in range(workers_per_session))
 
+            async def add_ready_session(session):
+                add_sessions([session])
+
             async def grow_pool():
-                expansion = self.loop.create_task(get_upload_sessions(self, dc_id, pool_size))
+                expansion = self.loop.create_task(
+                    get_upload_sessions(
+                        self, dc_id, pool_size,
+                        None if is_bot else add_ready_session,
+                    )
+                )
                 try:
                     while not expansion.done():
-                        add_sessions([s for s in self.media_session_pools.get(dc_id, [])
-                                      if s.is_connected.is_set()])
-                        await asyncio.wait([expansion], timeout=0.05)
+                        if is_bot:
+                            add_sessions([s for s in self.media_session_pools.get(dc_id, [])
+                                          if s.is_connected.is_set()])
+                            await asyncio.wait([expansion], timeout=0.05)
+                        else:
+                            await asyncio.sleep(0.05)
                     add_sessions(await expansion)
                 except Exception:
                     log.warning("Upload pool expansion failed; continuing with ready sessions", exc_info=True)
@@ -518,7 +535,7 @@ class SaveFile:
             try:
                 fp.seek(part_size * file_part)
                 next_batch_task = self.loop.create_task(read_batch())
-                if is_bot and pool_size > len(pool):
+                if pool_size > len(pool):
                     pool_growth_task = self.loop.create_task(grow_pool())
 
                 while True:
@@ -606,6 +623,8 @@ class SaveFile:
             else:
                 # EOF means all parts were queued, not acknowledged. Keep
                 # growing the worker pool while the remaining parts drain.
+                if pool_growth_task is not None and not is_bot:
+                    await pool_growth_task
                 if is_bot:
                     last_acked = _acked[0]
                     last_completion = time.monotonic()

@@ -1755,7 +1755,7 @@ class Client(Methods):
                                 _getfile_rate.pause(e.value)
                             await asyncio.sleep(e.value)
 
-                if needs_pool and not use_fake and (_is_premium or _is_bot):
+                if needs_pool and not use_fake:
                     async def prefetch():
                         pool = await asyncio.shield(pool_task)
                         count = min(total_chunks - 1, len(pool) * dl_workers_per_session)
