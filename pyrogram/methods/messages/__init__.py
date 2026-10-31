@@ -96,6 +96,10 @@ from .add_poll_option import AddPollOption
 from .delete_poll_option import DeletePollOption
 from .get_share_theme_backdrops import GetShareThemeBackdrops
 from .set_share_theme import SetShareTheme
+from .get_rich_message import GetRichMessage
+from .search_posts import SearchPosts
+from .send_reaction import SendReaction
+from .start_bot import StartBot
 
 class Messages(
     CopyMediaGroup,
@@ -176,6 +180,10 @@ class Messages(
     AddPollOption,
     DeletePollOption,
     GetShareThemeBackdrops,
-    SetShareTheme
+    SetShareTheme,
+    GetRichMessage,
+    SearchPosts,
+    SendReaction,
+    StartBot
 ):
     pass

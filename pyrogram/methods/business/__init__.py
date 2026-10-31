@@ -28,6 +28,7 @@ from .get_payment_form import GetPaymentForm
 from .send_payment_form import SendPaymentForm
 from .get_available_gifts import GetAvailableGifts
 from .get_owned_star_count import GetOwnedStarCount
+from .get_business_chat_links import GetBusinessChatLinks
 
 
 class TelegramBusiness(
@@ -42,5 +43,6 @@ class TelegramBusiness(
     SendPaymentForm,
     GetAvailableGifts,
     GetOwnedStarCount,
+    GetBusinessChatLinks,
 ):
     pass

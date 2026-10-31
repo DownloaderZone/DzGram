@@ -22,6 +22,7 @@ from .deposit_star_gift import DepositStarGift
 from .display_star_gift import DisplayStarGift
 from .request_recurring_payment import RequestRecurringPayment
 from .withdraw_star_gift import WithdrawStarGift
+from .apply_gift_code import ApplyGiftCode
 
 
 class Payments(
@@ -30,5 +31,6 @@ class Payments(
     DisplayStarGift,
     RequestRecurringPayment,
     WithdrawStarGift,
+    ApplyGiftCode,
 ):
     pass
