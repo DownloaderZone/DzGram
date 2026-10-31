@@ -1,4 +1,4 @@
-sphinx>=7.0
-furo>=2024.0.0
+sphinx>=9.2.0
+furo>=2025.12.19
 sphinx-copybutton>=0.5.2
-sphinx-design>=0.5.0
+sphinx-design>=0.7.0

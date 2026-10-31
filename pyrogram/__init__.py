@@ -18,12 +18,24 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 __fork_name__ = "dzgram"
-__version__ = "2.3.38"
+__version__ = "2.3.39"
 __license__ = "GNU Lesser General Public License v3.0 (LGPL-3.0)"
 __copyright__ = "Copyright (C) 2017-present DownloaderZone <https://github.com/DownloaderZone>"
 
 import os
 from concurrent.futures.thread import ThreadPoolExecutor
+
+if os.environ.get("DZGRAM_USE_UVLOOP", "1") != "0":
+    try:
+        import uvloop
+    except (ImportError, RuntimeError):
+        pass
+    else:
+        try:
+            uvloop.install()
+        except RuntimeError:
+            # An application may import DzGram after its loop has started.
+            pass
 
 
 class StopTransmission(Exception):
