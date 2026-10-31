@@ -81,7 +81,7 @@ class TCP:
 
             log.info("Using proxy %s", hostname)
         else:
-            self.socket = socks.socksocket(
+            self.socket = socket.socket(
                 socket.AF_INET6 if ipv6
                 else socket.AF_INET
             )
@@ -160,27 +160,12 @@ class TCP:
                 raise OSError(e) from e
 
     async def recv(self, length: int = 0):
-        chunks = []
-        received = 0
-
         reader = self.reader
 
-        if reader is None:
+        if reader is None or length <= 0:
             return None
 
-        while received < length:
-            try:
-                chunk = await asyncio.wait_for(
-                    reader.read(length - received),
-                    TCP.TIMEOUT
-                )
-            except (OSError, asyncio.TimeoutError):
-                return None
-            else:
-                if chunk:
-                    chunks.append(chunk)
-                    received += len(chunk)
-                else:
-                    return None
-
-        return chunks[0] if len(chunks) == 1 else b"".join(chunks)
+        try:
+            return await asyncio.wait_for(reader.readexactly(length), TCP.TIMEOUT)
+        except (asyncio.IncompleteReadError, OSError, asyncio.TimeoutError):
+            return None
