@@ -253,6 +253,12 @@ class Chat(Object):
         has_automatic_translation (``bool``, *optional*):
             True, if automatic translation of messages is enabled in the channel.
 
+        is_news (``bool``, *optional*):
+            True, if the channel is a news channel.
+
+        has_forum_sidebar (``bool``, *optional*):
+            True, if the forum sidebar is enabled in the channel.
+
         first_profile_audio (:obj:`~pyrogram.types.Audio`, *optional*):
             For private chats, the first audio added to the profile of the user.
 
@@ -339,6 +345,8 @@ class Chat(Object):
         can_send_gift: bool = None,
         paid_message_star_count: int = None,
         has_automatic_translation: bool = None,
+        is_news: bool = None,
+        has_forum_sidebar: bool = None,
         is_direct_messages: bool = None,
         first_profile_audio: "types.Audio" = None,
         note: "types.FormattedText" = None,
@@ -421,6 +429,8 @@ class Chat(Object):
         self.can_send_gift = can_send_gift
         self.paid_message_star_count = paid_message_star_count
         self.has_automatic_translation = has_automatic_translation
+        self.is_news = is_news
+        self.has_forum_sidebar = has_forum_sidebar
         self.is_direct_messages = is_direct_messages
         self.first_profile_audio = first_profile_audio
         self.note = note
@@ -595,6 +605,8 @@ class Chat(Object):
             emoji_status=types.EmojiStatus._parse(client, channel.emoji_status),
             paid_message_star_count=channel.send_paid_messages_stars,
             has_automatic_translation=channel.autotranslation,
+            is_news=getattr(channel, "in_news", None),
+            has_forum_sidebar=getattr(channel, "forum_sidebar", None),
             is_direct_messages=channel.monoforum,
             direct_messages_chat_id=utils.get_channel_id(channel.linked_monoforum_id) if channel.linked_monoforum_id else None,
             _raw=channel

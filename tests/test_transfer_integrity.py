@@ -135,6 +135,84 @@ async def test_upload_worker_cleanup_is_bounded():
 
 
 @pytest.mark.asyncio
+async def test_upload_waits_for_acks_before_cleanup_for_user_accounts(monkeypatch):
+    # User uploads used to stop their workers 10s after the last part was
+    # queued, so a slow part was cancelled (and reported as a cleanup timeout)
+    # even though it was still being acknowledged.
+    client = Client("user_drain", api_id=1, api_hash="test")
+    client.storage = FakeStorage()
+    monkeypatch.setattr(save_file_module, "UPLOAD_WORKER_SHUTDOWN_TIMEOUT", 0.05)
+
+    class Slow:
+        def __init__(self):
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+            self.is_restarting = False
+
+        async def invoke(self, query, **kwargs):
+            await asyncio.sleep(0.2)
+            return True
+
+    client.upload_sessions[2] = [Slow()]
+    result = await client.save_file(io.BytesIO(b"x" * (4 * PART_SIZE)))
+
+    assert result.parts == 4
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_upload_failover_keeps_a_replaced_connection_marked_ready(monkeypatch):
+    # A restart (for example by the receive loop) can replace the transport
+    # while a part is in flight. The resulting error must not quarantine the
+    # fresh connection the session already reconnected with.
+    client = Client("replaced", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    client.storage = FakeStorage()
+    monkeypatch.setattr(save_file_module, "UPLOAD_PART_RETRIES", 2)
+
+    class Replaced:
+        def __init__(self):
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+            self.is_restarting = False
+            self.connection = object()
+            self.first = True
+
+        async def invoke(self, query, **kwargs):
+            if self.first:
+                self.first = False
+                self.connection = object()
+                raise OSError("connection replaced by restart")
+            return True
+
+        async def restart(self, max_attempts=None):
+            self.is_connected.set()
+
+    class Healthy:
+        def __init__(self):
+            self.is_connected = asyncio.Event()
+            self.is_connected.set()
+            self.is_restarting = False
+            self.connection = object()
+
+        async def invoke(self, query, **kwargs):
+            return True
+
+    replaced = Replaced()
+    healthy = Healthy()
+
+    async def pool(dc_id, count):
+        return [replaced, healthy][:count]
+
+    client._get_media_session_pool = pool
+    result = await client.save_file(io.BytesIO(b"x" * (4 * PART_SIZE)))
+
+    assert result.parts == 4
+    assert replaced.is_connected.is_set()
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("in_memory", [False, True])
 async def test_short_download_fails_and_removes_incomplete_file(tmp_path, in_memory):
     client = Client("short", api_id=1, api_hash="test")

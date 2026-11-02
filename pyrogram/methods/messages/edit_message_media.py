@@ -18,14 +18,10 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 from datetime import datetime
-import io
-import os
-import re
 from typing import Union
 
 import pyrogram
 from pyrogram import raw, types, utils
-from pyrogram.file_id import FileType
 
 from .inline_session import get_session
 

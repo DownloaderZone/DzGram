@@ -1,9 +1,10 @@
 import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
 
-from pyrogram import raw
+from pyrogram import Client, raw
 from pyrogram.connection import Connection
 from pyrogram.connection.transport.tcp.tcp import TCP
 from pyrogram.session import Session
@@ -273,3 +274,123 @@ async def test_recv_worker_exits_when_connection_is_gone():
     session.connection = None
 
     await asyncio.wait_for(session.recv_worker(), 1)
+
+
+@pytest.mark.asyncio
+async def test_connection_slots_are_spaced(monkeypatch):
+    # A media pool restart dials every session at once. Handshakes must be
+    # paced so the burst is not mistaken for a transport flood.
+    client = Client("governor_spacing", api_id=1, api_hash="test")
+    monkeypatch.setattr(client, "CONNECT_MIN_INTERVAL", 0.05)
+    try:
+        started = time.monotonic()
+        await client.acquire_connection_slot()
+        await client.acquire_connection_slot()
+        assert time.monotonic() - started >= 0.045
+    finally:
+        client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_transport_flood_pauses_every_new_connection(monkeypatch):
+    client = Client("governor_flood", api_id=1, api_hash="test")
+    monkeypatch.setattr(client, "CONNECT_FLOOD_BASE", 0.2)
+    monkeypatch.setattr(client, "CONNECT_MAX_BACKOFF", 1.0)
+    try:
+        client.note_transport_flood()
+
+        started = time.monotonic()
+        await client.acquire_connection_slot()
+        assert time.monotonic() - started >= 0.15
+    finally:
+        client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_failed_restart_is_not_retried_inside_cooldown():
+    session = make_session()
+    calls = []
+
+    async def stop():
+        calls.append("stop")
+
+    async def start(**kwargs):
+        calls.append("start")
+
+    session.stop = stop
+    session.start = start
+    session._restart_exc = OSError("boom")
+    session._restart_failed_at = time.monotonic()
+
+    with pytest.raises(OSError, match="boom"):
+        await session.restart()
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_idle_upload_sessions_are_reaped():
+    # The user upload pool is separate from the download pool. It must be
+    # reaped as well, otherwise every upload leaves connections open for the
+    # lifetime of the client.
+    client = Client("reap_uploads", api_id=1, api_hash="test")
+    try:
+        class Pooled:
+            def __init__(self, age):
+                self.results = {}
+                self.last_used = time.monotonic() - age
+                self.stopped = False
+
+            async def stop(self):
+                self.stopped = True
+
+        idle = Pooled(10)
+        hot = Pooled(0)
+        client.upload_sessions[2] = [idle, hot]
+
+        assert await client.reap_media_sessions(idle_timeout=1) == 1
+        assert idle.stopped
+        assert not hot.stopped
+        assert client.upload_sessions[2] == [hot]
+    finally:
+        client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_recv_worker_schedules_restart_without_blocking():
+    notes = []
+    client = SimpleNamespace(
+        sleep_threshold=0,
+        name="test",
+        ipv6=False,
+        proxy=None,
+        note_transport_flood=lambda *args, **kwargs: notes.append(True),
+    )
+    session = Session(client, 2, b"k" * 256, False)
+    session.is_connected.set()
+
+    release = asyncio.Event()
+
+    class Connection:
+        async def recv(self):
+            return (-429).to_bytes(4, "little", signed=True)
+
+        async def send(self, data):
+            return None
+
+    session.connection = Connection()
+
+    async def safe_restart():
+        await release.wait()
+
+    session._safe_restart = safe_restart
+
+    await asyncio.wait_for(session.recv_worker(), 1)
+    await asyncio.sleep(0)
+
+    assert notes == [True]
+    task = session._restart_task
+    assert task is not None and not task.done()
+
+    release.set()
+    await task

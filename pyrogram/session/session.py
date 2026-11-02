@@ -28,7 +28,7 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional, Set
 
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, utils
 from pyrogram.connection import Connection
 from pyrogram.crypto import mtproto
 from pyrogram.errors import (
@@ -88,6 +88,14 @@ class ConnectionLost:
     pass
 
 
+def _transport_error_code(packet: Optional[bytes]) -> Optional[int]:
+    """Return the transport error code carried by a 4-byte packet, if any."""
+    if packet is None or len(packet) != 4:
+        return None
+
+    return -Int.read(BytesIO(packet))
+
+
 def _transport_error(packet: Optional[bytes]) -> Optional[str]:
     """Describe a packet too short to be a message, or None if it is one."""
     if packet is not None and len(packet) > 4:
@@ -145,6 +153,14 @@ class Session:
     FUTURE_SALTS_COUNT = 64
     FUTURE_SALTS_THRESHOLD = 60
     FUTURE_SALTS_INTERVAL = 60
+
+    # A failed automatic restart is not retried immediately: every caller that
+    # noticed the same broken transport must share one reconnect attempt instead
+    # of each starting a fresh multi-attempt handshake cycle.
+    RESTART_COOLDOWN = float(os.environ.get("DZGRAM_RESTART_COOLDOWN", 2.0))
+    MAX_AUTO_RESTART_ATTEMPTS = max(
+        1, int(os.environ.get("DZGRAM_RESTART_ATTEMPTS", 3))
+    )
 
     CUR_ALWD_INNR_QRYS = (
         raw.functions.InvokeWithoutUpdates,
@@ -212,6 +228,9 @@ class Session:
         self._restart_lock = asyncio.Lock()
         self._restart_done = asyncio.Event()
         self._restart_done.set()
+        self._restart_exc: Optional[BaseException] = None
+        self._restart_failed_at = 0.0
+        self._restart_task: Optional[asyncio.Task] = None
 
         self._skew_breaches = 0
         self._msg_id_floor = 0
@@ -235,7 +254,7 @@ class Session:
         try:
             return asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.get_event_loop_policy().get_event_loop()
+            return utils.get_event_loop()
 
     async def start(self, max_attempts: Optional[int] = None):
         if self.is_connected.is_set():
@@ -254,6 +273,13 @@ class Session:
                 self._teardown_started = False
                 self._skew_breaches = 0
                 self._msg_id_floor = 0
+
+                # Pace handshakes across the whole client: a media pool restart
+                # dials many sessions at once, and Telegram answers that burst
+                # with transport error 429 ("too many transport connections").
+                acquire = getattr(self.client, "acquire_connection_slot", None)
+                if acquire is not None:
+                    await acquire()
 
                 # Drop anything left from an earlier generation before this
                 # attempt builds its own. A direct start() after a stop() that
@@ -367,6 +393,10 @@ class Session:
                 else:
                     break
 
+            note_ok = getattr(self.client, "note_connection_ok", None)
+            if note_ok is not None:
+                note_ok()
+
             self.is_connected.set()
 
             log.info("Session started")
@@ -430,7 +460,22 @@ class Session:
     async def restart(self, max_attempts: Optional[int] = None):
         if self._restart_lock.locked():
             await self._restart_done.wait()
+
+            # Share the outcome with every caller that noticed the same broken
+            # transport, instead of making each one start its own handshake
+            # cycle the moment the first one finishes.
+            if not self.is_connected.is_set() and self._restart_exc is not None:
+                raise self._restart_exc
+
             return
+
+        now = time.monotonic()
+        if (
+            not self.is_connected.is_set()
+            and self._restart_failed_at
+            and now - self._restart_failed_at < self.RESTART_COOLDOWN
+        ):
+            raise self._restart_exc or OSError("Session is not connected")
 
         async with self._restart_lock:
             self._restart_done.clear()
@@ -442,6 +487,13 @@ class Session:
                 except (Exception, asyncio.CancelledError):
                     pass
                 await self.start(max_attempts=max_attempts or self.MAX_RETRIES)
+            except (Exception, asyncio.CancelledError) as e:
+                self._restart_exc = e
+                self._restart_failed_at = time.monotonic()
+                raise
+            else:
+                self._restart_exc = None
+                self._restart_failed_at = 0.0
             finally:
                 self._restart_done.set()
 
@@ -453,7 +505,7 @@ class Session:
 
         log.warning("Discarding packet and closing connection: %s", reason)
 
-        _run_in_background(self._safe_restart(), self._loop())
+        self._schedule_restart()
 
     async def handle_packet(self, packet):
         if _HAS_RUST_MSG:
@@ -751,13 +803,18 @@ class Session:
                 self._fail_pending(ConnectionResetError(str(e) or type(e).__name__))
 
                 if self.is_connected.is_set():
-                    await self._safe_restart()
+                    self._schedule_restart()
                 break
 
             reason = _transport_error(packet)
 
             if reason is not None:
                 log.warning(reason)
+
+                if _transport_error_code(packet) == 429:
+                    flood = getattr(self.client, "note_transport_flood", None)
+                    if flood is not None:
+                        flood()
 
                 if packet is not None and len(packet) == 4 and Int.read(BytesIO(packet)) == -404:
                     # Reconnecting with the same unknown key cannot recover it.
@@ -771,7 +828,7 @@ class Session:
                 self._fail_pending(ConnectionResetError(reason))
 
                 if self.is_connected.is_set():
-                    await self._safe_restart()
+                    self._schedule_restart()
 
                 break
 
@@ -789,11 +846,39 @@ class Session:
 
         log.info("NetworkTask stopped")
 
+    def _schedule_restart(self):
+        """Start at most one background reconnect for this session.
+
+        The receive loop must never await a full handshake cycle: doing so keeps
+        the failed connection's teardown coupled to a potentially long start
+        and lets every worker retry pile another restart on top.
+        """
+        if self._stopping:
+            return
+
+        task = self._restart_task
+        if task is not None and not task.done():
+            return
+
+        self._restart_task = _run_in_background(self._safe_restart(), self._loop())
+        self._restart_task.add_done_callback(self._clear_restart_task)
+
+    def _clear_restart_task(self, task):
+        if self._restart_task is task:
+            self._restart_task = None
+
     async def _safe_restart(self):
         try:
-            await self.restart()
+            # Automatic recovery is deliberately bounded: if the network is
+            # still down, the next request (or the next pool pass) continues
+            # after RESTART_COOLDOWN instead of one task holding the session in
+            # a ten-attempt handshake marathon.
+            await self.restart(max_attempts=self.MAX_AUTO_RESTART_ATTEMPTS)
         except (Exception, asyncio.CancelledError) as e:
-            log.error("Session restart failed: %s", e)
+            # repr() instead of str(): exceptions such as CancelledError or a
+            # bare ConnectionResetError stringify to "" and would log an
+            # unexplainable "Session restart failed: " line.
+            log.error("Session restart failed: %s", repr(e))
 
     async def send(
         self,
@@ -931,7 +1016,12 @@ class Session:
             raise self._start_exc
 
         if not self.is_connected.is_set():
-            await self.restart()
+            if self._restart_lock.locked():
+                # Piggyback on the reconnect already in progress instead of
+                # queueing a second full start cycle behind it.
+                await self._restart_done.wait()
+            else:
+                await self.restart()
 
         if not self.is_connected.is_set():
             if self._start_exc is not None:
@@ -940,7 +1030,7 @@ class Session:
             # restart() may have been coalesced into a failed attempt that
             # finished just before this task resumed. Never fall through to a
             # send on a disconnected session: report a retryable error so the
-            # caller restarts it instead of hitting a dead transport.
+            # caller backs off instead of hitting a dead transport.
             raise OSError("Session is not connected")
 
     async def invoke(
@@ -980,6 +1070,7 @@ class Session:
             if sleep_threshold is not None and sleep_threshold >= 0
             else 0.0
         )
+        attempt = 0
 
         while retries > 0:
             if isinstance(query, Session.CUR_ALWD_INNR_QRYS):
@@ -1030,6 +1121,7 @@ class Session:
                     raise e from None
 
                 retries -= 1
+                attempt += 1
                 if retries == 0:
                     raise
 
@@ -1046,9 +1138,15 @@ class Session:
                     isinstance(e, TimeoutError)
                     and time.monotonic() - self.last_packet_received < self.WAIT_TIMEOUT
                 ):
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(min(2 ** (attempt - 1), 30))
                 else:
-                    await self.restart()
+                    try:
+                        await self.restart()
+                    except (OSError, TimeoutError):
+                        # The reconnect cooldown rejected another attempt, or
+                        # the last cycle just failed. Back off here rather than
+                        # stacking handshake cycles from every waiting worker.
+                        await asyncio.sleep(min(2 ** (attempt - 1), 5))
 
         raise TimeoutError("Exceeded maximum number of retries")
 

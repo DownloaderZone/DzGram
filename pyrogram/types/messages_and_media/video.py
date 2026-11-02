@@ -22,7 +22,7 @@ from typing import Optional
 
 import pyrogram
 from pyrogram import raw, types, utils
-from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType, ThumbnailSource
+from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType
 from ..object import Object
 
 

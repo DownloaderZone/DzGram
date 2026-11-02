@@ -24,7 +24,6 @@ import os
 from struct import pack, unpack
 from typing import Optional
 
-import pyrogram
 from pyrogram.crypto import aes
 from .tcp import TCP
 

@@ -18,7 +18,6 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 from datetime import datetime
-from typing import Union
 
 import pyrogram
 from pyrogram import raw, utils

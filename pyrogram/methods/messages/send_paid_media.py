@@ -128,7 +128,6 @@ class SendPaidMedia:
         """
         multi_media = []
 
-        peer = await self.resolve_peer(chat_id)
         for i in media:
             if isinstance(i, types.InputPaidMediaPhoto):
                 if isinstance(i.media, str):

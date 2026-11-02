@@ -19,15 +19,12 @@
 
 import logging
 import io
-import os
-import re
 from datetime import datetime
 from typing import Union, Optional, Callable
 
 import pyrogram
 from pyrogram import raw, enums, types, utils
 from pyrogram.errors import FilePartMissing
-from pyrogram.file_id import FileType
 from .inline_session import get_session
 
 log = logging.getLogger(__name__)

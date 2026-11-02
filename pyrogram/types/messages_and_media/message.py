@@ -1226,6 +1226,7 @@ class Message(Object, Update):
                 connected_website=connected_website,
                 write_access_allowed=write_access_allowed,
                 successful_payment=successful_payment,
+                refunded_payment=refunded_payment,
                 message_auto_delete_timer_changed=message_auto_delete_timer_changed,
                 boost_added=boost_added,
                 forum_topic_created=forum_topic_created,
@@ -4600,7 +4601,7 @@ class Message(Object, Update):
             self.chat.type,
             self.direct_messages_topic.topic_id if self.direct_messages_topic else None,
             quote,
-            reply_to_message_id,
+            None,
         )
 
         return await self._client.send_invoice(

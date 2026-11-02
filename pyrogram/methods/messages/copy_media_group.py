@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Union
 
 import pyrogram
-from pyrogram import enums, raw, types, utils
+from pyrogram import raw, types, utils
 
 log = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ class CopyMediaGroup:
                 sent_message, sent_entities = (await utils.parse_text_entities(self, captions[i], self.parse_mode, None)).values()
             elif isinstance(captions, str) and i == 0:
                 sent_message, sent_entities = (await utils.parse_text_entities(self, captions, self.parse_mode, None)).values()
-            elif message.caption and message.caption != "None" and not type(captions) is str:  # TODO
+            elif message.caption and message.caption != "None" and not isinstance(captions, str):  # TODO
                 sent_message, sent_entities = (await utils.parse_text_entities(self, message.caption, None, message.caption_entities)).values()
             else:
                 sent_message, sent_entities = "", None

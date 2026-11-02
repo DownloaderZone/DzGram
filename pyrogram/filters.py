@@ -1019,7 +1019,7 @@ def cq_data(data: Union[str, list[str]]):
             return callback_query.data in data
         else:
             return False
-    return filters.create(func)
+    return create(func)
 
 
 # endregion

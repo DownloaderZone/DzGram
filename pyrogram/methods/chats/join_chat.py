@@ -28,7 +28,6 @@ class JoinChat:
     async def join_chat(
         self: "pyrogram.Client",
         chat_id: Union[int, str],
-        for_news: bool = None,
     ) -> "types.Chat":
         """Join a group chat or channel.
 
@@ -38,9 +37,6 @@ class JoinChat:
             chat_id (``int`` | ``str``):
                 Unique identifier for the target chat in form of a *t.me/joinchat/* link, a username of the target
                 channel/supergroup (in the format @username) or a chat id of a linked chat (channel or supergroup).
-
-            for_news (``bool``, *optional*):
-                Pass True to join a channel as a news channel.
 
         Returns:
             :obj:`~pyrogram.types.Chat`: On success, a chat object is returned.
@@ -77,7 +73,6 @@ class JoinChat:
             result = await self.invoke(
                 raw.functions.channels.JoinChannel(
                     channel=await self.resolve_peer(chat_id),
-                    for_news=for_news or None,
                 )
             )
 

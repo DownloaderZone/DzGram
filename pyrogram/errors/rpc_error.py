@@ -18,6 +18,7 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 from os import environ
+import logging
 import re
 from datetime import datetime
 from importlib import import_module
@@ -27,6 +28,8 @@ from pyrogram import __version__, raw
 from pyrogram.raw.core import TLObject
 from .exceptions.all import exceptions
 
+
+log = logging.getLogger(__name__)
 
 UEFN = environ.get(
     "PYROGRAM_LOG_UNKNOWN_ERRORS_FILENAME",
@@ -68,8 +71,14 @@ class RPCError(Exception):
             self.value = value
 
         if not SCUK and is_unknown:
-            with open(UEFN, "a", encoding="utf-8") as f:
-                f.write(f"{datetime.now()}\t{value}\t{rpc_name}\n")
+            # Never let logging problems mask the RPC error itself (e.g. a
+            # read-only directory or full disk must not turn into an OSError
+            # raised from the constructor).
+            try:
+                with open(UEFN, "a", encoding="utf-8") as f:
+                    f.write(f"{datetime.now()}\t{value}\t{rpc_name}\n")
+            except OSError as e:
+                log.debug("Failed to log unknown error: %s %s", type(e).__name__, e)
 
     @staticmethod
     def raise_it(rpc_error: "raw.types.RpcError", rpc_type: type[TLObject]):

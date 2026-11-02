@@ -695,8 +695,10 @@ def start(format: bool = False):
 
 
 if "__main__" == __name__:
-    HOME_PATH = Path(".")
-    DESTINATION_PATH = Path("../../pyrogram/raw")
-    NOTICE_PATH = Path("../../NOTICE")
+    # Resolve everything relative to this file so the compiler works from any cwd
+    HERE = Path(__file__).resolve().parent
+    HOME_PATH = HERE
+    DESTINATION_PATH = HERE.parents[1] / "pyrogram" / "raw"
+    NOTICE_PATH = HERE.parents[1] / "NOTICE"
 
     start(format=False)

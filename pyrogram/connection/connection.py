@@ -21,6 +21,7 @@ import asyncio
 import logging
 from typing import Optional
 
+from .. import utils
 from .transport import *
 from ..session.internals import DataCenter
 
@@ -76,7 +77,7 @@ class Connection:
         if isinstance(loop, asyncio.AbstractEventLoop):
             self.loop = loop
         else:
-            self.loop = asyncio.get_event_loop()
+            self.loop = utils.get_event_loop()
 
     async def connect(self):
         # A re-connect must never leave the previous transport referenced, so

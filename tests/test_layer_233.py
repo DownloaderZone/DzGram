@@ -23,21 +23,21 @@ from pyrogram.raw.core import TLObject
         public_data_hash=123,
         widget_id=456,
     ),
-    raw.types.AgentProvider(
-        id="provider",
-        title="Provider",
-        vendor="Vendor",
-        key_url="https://example.com",
-        icon_emoji_id=789,
-        models_searchable=True,
+    raw.types.UserWallet(
+        address="EQCG_example_address",
+        balance=100,
+        public_key=b"key",
+        state_init=b"init",
     ),
-    raw.types.FeedPosition(
-        date=123,
-        peer=raw.types.PeerUser(user_id=1),
-        id=2,
+    raw.types.UpdateEditForumTopic(
+        peer=raw.types.PeerChannel(channel_id=1),
+        topic_id=2,
+        title="New title",
+        closed=True,
     ),
     raw.types.UpdateBotWidgetQuery(
         query_id=1,
+        query_type=raw.types.WidgetQueryTypeData(),
         user_id=2,
         peer=raw.types.PeerUser(user_id=2),
         msg_id=3,
@@ -45,15 +45,19 @@ from pyrogram.raw.core import TLObject
         chat_type="private",
         data=b"data",
         widget_id=5,
+        wallet_card=None,
     ),
-    raw.functions.feed.GetFeed(
-        filter_id=0,
-        add_offset=0,
-        limit=20,
-        hash=0,
-        offset_position=raw.types.FeedPosition(
-            date=1, peer=raw.types.PeerUser(user_id=1), id=2
-        ),
+    raw.functions.channels.ToggleForum(
+        channel=raw.types.InputChannel(channel_id=1, access_hash=0),
+        enabled=True,
+        tabs=False,
+        sidebar=True,
+    ),
+    raw.functions.messages.GetBotWidgetQueryAnswer(
+        peer=raw.types.InputPeerChannel(channel_id=1, access_hash=0),
+        msg_id=42,
+        query_type=raw.types.WidgetQueryTypeData(with_wallet=True),
+        data=b"data",
     ),
 ])
 def test_layer_233_wire_roundtrip(value):

@@ -29,6 +29,7 @@ class GetBotWidgetQueryAnswer:
         chat_id: Union[int, str],
         message_id: int,
         data: bytes,
+        query_type: "raw.base.WidgetQueryType" = None,
     ) -> "types.BotWidgetQueryAnswer":
         """Get the answer of a bot widget query.
 
@@ -44,6 +45,10 @@ class GetBotWidgetQueryAnswer:
             data (``bytes``):
                 Query payload.
 
+            query_type (:obj:`~pyrogram.raw.base.WidgetQueryType`, *optional*):
+                Type of the widget query.
+                Defaults to a plain data query.
+
         Returns:
             :obj:`~pyrogram.types.BotWidgetQueryAnswer`: The answer.
 
@@ -56,6 +61,7 @@ class GetBotWidgetQueryAnswer:
             raw.functions.messages.GetBotWidgetQueryAnswer(
                 peer=await self.resolve_peer(chat_id),
                 msg_id=message_id,
+                query_type=query_type or raw.types.WidgetQueryTypeData(),
                 data=data,
             )
         )

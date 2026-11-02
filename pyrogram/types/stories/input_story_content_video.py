@@ -17,10 +17,9 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 import io
-from typing import Optional, Union
+from typing import Union
 
 from .input_story_content import InputStoryContent
-from ... import enums
 
 
 class InputStoryContentVideo(InputStoryContent):

@@ -18,7 +18,6 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 from .advanced import Advanced
-from .agent import Agent
 from .auth import Auth
 from .bots import Bots
 from .chats import Chats
@@ -27,7 +26,6 @@ from .communities import Communities
 from .contacts import Contacts
 from .decorators import Decorators
 from .ephemeral import Ephemeral
-from .feed import Feed
 from .folders import Folders
 from .invite_links import InviteLinks
 from .messages import Messages
@@ -45,7 +43,6 @@ from .pyromod import Pyromod
 class Methods(
     Decorators,
     Advanced,
-    Agent,
     Auth,
     Bots,
     Chats,
@@ -53,7 +50,6 @@ class Methods(
     Communities,
     Contacts,
     Ephemeral,
-    Feed,
     Folders,
     InviteLinks,
     Messages,

@@ -47,10 +47,6 @@ from .video_chat_scheduled import VideoChatScheduled
 from .video_chat_started import VideoChatStarted
 from .rtmp_url import RtmpUrl
 from .chat_background import ChatBackground
-from .agent_provider import AgentProvider
-from .agent_provider_key import AgentProviderKey
-from .agent_settings import AgentSettings
-from .agent_providers import AgentProviders
 
 __all__ = [
     "Birthdate",
@@ -83,8 +79,4 @@ __all__ = [
     "VideoChatStarted",
     "RtmpUrl",
     "ChatBackground",
-    "AgentProvider",
-    "AgentProviderKey",
-    "AgentSettings",
-    "AgentProviders",
 ]

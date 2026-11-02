@@ -18,7 +18,7 @@
 
 import pyrogram
 
-from pyrogram import raw, types
+from pyrogram import raw
 from ..object import Object
 
 

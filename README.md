@@ -101,8 +101,20 @@ multiplying unbounded writes on the same socket. A part that exhausts a
 connection's retries is resent through another ready pool connection (three
 attempts by default, `DZGRAM_UPLOAD_PART_RETRIES`). Worker shutdown is bounded,
 so a broken connection cannot leave `save_file()` stuck forever after the error.
-The no-progress timeout defaults to 180 seconds and can be adjusted with
-`DZGRAM_UPLOAD_STALL_TIMEOUT`.
+If parts stay unacknowledged, the upload fails after the no-progress timeout
+(180 seconds by default, `DZGRAM_UPLOAD_STALL_TIMEOUT`).
+
+Reconnects are paced at the client level. A media pool restart dials one
+connection at a time, spaced by `DZGRAM_CONNECT_MIN_INTERVAL` (0.25 seconds), and
+a transport error 429 from Telegram pauses every new connection until the flood
+window expires (`DZGRAM_CONNECT_FLOOD_BASE`, doubling up to
+`DZGRAM_CONNECT_MAX_BACKOFF`, 30 seconds). Each session runs at most one
+background reconnect; concurrent requests share its result instead of starting
+their own handshake cycle, and a failed cycle is not retried for
+`DZGRAM_RESTART_COOLDOWN` seconds. Automatic recovery makes
+`DZGRAM_RESTART_ATTEMPTS` start attempts (3 by default). This is what prevents a
+brief outage from turning into the "too many transport connections" loop that
+used to end in `Upload stalled while awaiting part acknowledgements`.
 
 Transports that go away mid-transfer are reported as retryable `OSError`s rather
 than leaking through as `'NoneType' object has no attribute 'write'`. A session
@@ -150,10 +162,10 @@ Connection counts can be tuned before starting your client:
 
 ### API layer
 
-DzGram 2.3.38 targets Telegram layer 233. The update adds the layer 233 schema
-(agent providers, feeds, widgets, hidden user statuses and news channels) plus
-high-level wrappers for the new agent, feed, widget, stats, folder and contact
-card RPCs.
+DzGram 2.3.41 targets Telegram layer 233. The update syncs the layer 233
+schema with the latest TGScheme extract (wallet-backed widget queries,
+forum sidebar flags, news-channel statuses) plus high-level wrappers for the
+widget, stats, folder and contact card RPCs.
 
 It also validates and normalises local photo uploads, converting unsupported
 image formats (for example GIF) and heavy lossless PNGs to JPEG when Pillow is

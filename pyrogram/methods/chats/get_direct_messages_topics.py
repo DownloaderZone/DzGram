@@ -17,7 +17,7 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 from asyncio import sleep
-from typing import AsyncGenerator, Optional, Union
+from typing import AsyncGenerator, Union
 
 import pyrogram
 from pyrogram import raw, types, utils

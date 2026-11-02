@@ -18,7 +18,7 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 import pyrogram
-from pyrogram import types, utils, raw
+from pyrogram import types, raw
 
 
 class GetBusinessConnection:

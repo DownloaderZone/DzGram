@@ -20,8 +20,7 @@
 from typing import Optional, Union
 
 import pyrogram
-from pyrogram import raw, utils, types
-from pyrogram.file_id import FileType
+from pyrogram import raw, types
 
 from ..object import Object
 

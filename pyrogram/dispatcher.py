@@ -23,7 +23,7 @@ import logging
 from collections import OrderedDict
 
 import pyrogram
-from pyrogram import errors, utils, raw
+from pyrogram import utils, raw
 from pyrogram.handlers import (
     MessageHandler, EditedMessageHandler,
     BusinessBotConnectionHandler,

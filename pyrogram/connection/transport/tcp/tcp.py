@@ -22,7 +22,6 @@ import ipaddress
 import logging
 import os
 import socket
-import time
 from typing import Optional
 
 try:
@@ -133,7 +132,6 @@ class TCP:
         except OSError:
             pass
         finally:
-            time.sleep(0.001)
             self.socket.close()
 
     async def send(self, data: bytes):

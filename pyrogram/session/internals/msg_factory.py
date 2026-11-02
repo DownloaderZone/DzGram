@@ -22,7 +22,7 @@ from typing import Optional
 from pyrogram.raw.core import Message, MsgContainer, TLObject
 from pyrogram.raw.functions import Ping
 from pyrogram.raw.types import MsgsAck, HttpWait
-from .msg_id import MsgId, _MsgIdGenerator
+from .msg_id import _MsgIdGenerator
 from .seq_no import SeqNo
 
 not_content_related = (Ping, HttpWait, MsgsAck, MsgContainer)

@@ -17,7 +17,6 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 
-import pyrogram
 from pyrogram import types
 
 from .story_origin import StoryOrigin

@@ -20,7 +20,6 @@
 from datetime import datetime
 from typing import Optional
 
-import pyrogram
 from pyrogram import raw, utils
 from ..object import Object
 

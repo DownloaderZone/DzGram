@@ -369,7 +369,7 @@ CREATE TABLE update_state
         return await self.loop.run_in_executor(self.executor, self._update_usernames_impl, usernames)
 
     def _update_state_impl(self, value: tuple[int, int, int, int, int] = object):
-        if value == object:
+        if value is object:
             return self.conn.execute(
                 "SELECT id, pts, qts, date, seq FROM update_state "
                 "ORDER BY date ASC"
@@ -467,7 +467,7 @@ CREATE TABLE update_state
 
     async def _accessor(self, value: Any = object):
         # return await self._get(attr) if value == object else await self._set(attr, value)
-        return await self._get() if value == object else await self._set(value)
+        return await self._get() if value is object else await self._set(value)
     
     def _get_version_impl(self):
         with self.conn:
@@ -499,7 +499,7 @@ CREATE TABLE update_state
         return await self._accessor(value)
 
     async def version(self, value: int = object):
-        if value == object:
+        if value is object:
             return await self.loop.run_in_executor(self.executor, self._get_version_impl)
         else:
             return await self.loop.run_in_executor(self.executor, self._set_version_impl, value)

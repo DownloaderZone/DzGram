@@ -36,12 +36,13 @@ from importlib import import_module
 from io import StringIO, BytesIO
 from mimetypes import MimeTypes
 from pathlib import Path
-from typing import AsyncGenerator, Callable, List, Optional, Tuple, Union
+from typing import AsyncGenerator, Callable, Optional, Tuple, Union
 
 import pyrogram
 from pyrogram import __version__, __license__
 from pyrogram import enums
 from pyrogram import raw
+from pyrogram import types
 from pyrogram import utils
 from pyrogram.crypto import aes
 from pyrogram.errors import CDNFileHashMismatch
@@ -59,8 +60,6 @@ from pyrogram.session import Auth, Session
 from pyrogram.storage import SQLiteStorage, Storage
 from pyrogram.types import User, TermsOfService
 from pyrogram.utils import MIN_MONOFORUM_CHANNEL_ID, ainput
-from .connection import Connection
-from .connection.transport import TCP, TCPAbridged, TCPFull
 from .dispatcher import Dispatcher
 from .file_id import FileId, FileType, ThumbnailSource
 from .mime_types import mime_types
@@ -77,7 +76,7 @@ def transfer_budget(size: int) -> asyncio.Semaphore:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.get_event_loop_policy().get_event_loop()
+        loop = utils.get_event_loop()
 
     budget = _transfer_budgets.get(loop)
 
@@ -388,6 +387,17 @@ class Client(Methods):
     UPLOAD_WORKERS = 4
     MAX_CACHE_SIZE = 10000
 
+    # A pool restart must never become a TCP handshake storm. Telegram closes
+    # connections and answers transport error 429 when too many connections
+    # are opened from one IP in a short time; a pool that reconnects all its
+    # sessions at once therefore feeds the very outage it is recovering from.
+    # One handshake is admitted at a time, spaced by CONNECT_MIN_INTERVAL, and
+    # a transport 429 pauses every session until the flood window expires.
+    # https://core.telegram.org/mtproto/mtproto-transports#transport-errors
+    CONNECT_MIN_INTERVAL = float(os.environ.get("DZGRAM_CONNECT_MIN_INTERVAL", 0.25))
+    CONNECT_FLOOD_BASE = float(os.environ.get("DZGRAM_CONNECT_FLOOD_BASE", 5))
+    CONNECT_MAX_BACKOFF = float(os.environ.get("DZGRAM_CONNECT_MAX_BACKOFF", 30))
+
     MEDIA_SESSION_IDLE_TIMEOUT = int(os.environ.get("DZGRAM_MEDIA_SESSION_IDLE_TIMEOUT", 300))
     MEDIA_SESSION_REAP_INTERVAL = 60
     MAX_READ_AHEAD_CHUNKS = int(os.environ.get("DZGRAM_MAX_READ_AHEAD", 128))
@@ -525,6 +535,14 @@ class Client(Methods):
         self._media_sessions_locks = {}
         self._session_locks = {}
         self._session_creation_gate = asyncio.Semaphore(4)
+
+        # Shared reconnect governor. Media pools tear down and rebuild many
+        # TCP connections at once; without pacing that burst itself trips
+        # Telegram's transport flood protection and the pool never recovers.
+        self._connect_gate = asyncio.Lock()
+        self._next_connect_at = 0.0
+        self._connect_backoff = 0.0
+        self._transport_flood_until = 0.0
 
         self.save_file_semaphore = asyncio.Semaphore(self.max_concurrent_transmissions)
         self.get_file_semaphore = asyncio.Semaphore(self.max_concurrent_transmissions)
@@ -1320,10 +1338,82 @@ class Client(Methods):
                 else:
                     self.media_session_pools.pop(dc_id, None)
 
+        # User upload pools live in a separate map and would otherwise keep
+        # every connection open for the lifetime of the client. Treating them
+        # like download pools bounds the number of parallel transports per DC.
+        async with self.upload_sessions_lock:
+            for dc_id in list(self.upload_sessions):
+                sessions = self.upload_sessions.get(dc_id) or []
+                keep = []
+
+                for session in sessions:
+                    results = getattr(session, "results", None)
+                    last_used = getattr(session, "last_used", now)
+
+                    if results or now - last_used < idle_timeout:
+                        keep.append(session)
+                        continue
+
+                    try:
+                        await session.stop()
+                    except Exception:
+                        log.exception("Error stopping idle upload session")
+
+                    reaped += 1
+
+                if keep:
+                    self.upload_sessions[dc_id] = keep
+                else:
+                    self.upload_sessions.pop(dc_id, None)
+
         if reaped:
             log.info("Reaped %s idle media session(s)", reaped)
 
         return reaped
+
+    async def acquire_connection_slot(self) -> None:
+        """Admit one TCP handshake at a time, paced and flood-aware.
+
+        Telegram rejects connection bursts from a single IP with transport
+        error 429. Restarting a whole media pool in parallel therefore turns a
+        short network outage into a reconnect loop. Callers wait here before
+        dialing, and a 429 pushes the shared deadline out so every waiting
+        session backs off together instead of retrying independently.
+        """
+        async with self._connect_gate:
+            while True:
+                now = time.monotonic()
+                delay = max(self._next_connect_at, self._transport_flood_until) - now
+
+                if delay <= 0:
+                    break
+
+                await asyncio.sleep(delay)
+
+            self._next_connect_at = time.monotonic() + self.CONNECT_MIN_INTERVAL
+
+    def note_connection_ok(self) -> None:
+        """A handshake completed; stop escalating the shared backoff."""
+        self._connect_backoff = 0.0
+
+    def note_transport_flood(self, seconds: float = 0.0) -> None:
+        """Back every session off after the server reported a transport 429."""
+        self._connect_backoff = min(
+            max(self._connect_backoff * 2, self.CONNECT_FLOOD_BASE),
+            self.CONNECT_MAX_BACKOFF,
+        )
+        delay = max(seconds, self._connect_backoff)
+        previous = self._transport_flood_until
+
+        self._transport_flood_until = max(
+            self._transport_flood_until, time.monotonic() + delay
+        )
+
+        if self._transport_flood_until > previous + 0.5:
+            log.warning(
+                "[%s] Transport flood (429): pausing new connections for %.0fs",
+                self.name, delay,
+            )
 
     async def get_session(
         self,
@@ -1475,17 +1565,21 @@ class Client(Methods):
 
             self.media_session_pools[dc_id] = pool
 
-            if self.media_pool_reaper_task is None or self.media_pool_reaper_task.done():
-                try:
-                    running = asyncio.get_running_loop()
-                except RuntimeError:
-                    running = None
-
-                if running is not None:
-                    self.media_pool_reaper_event.clear()
-                    self.media_pool_reaper_task = running.create_task(self.media_pool_reaper())
+            self.ensure_media_reaper()
 
             return list(pool[:n])
+
+    def ensure_media_reaper(self) -> None:
+        """Start the idle-session reaper if it is not running yet."""
+        if self.media_pool_reaper_task is None or self.media_pool_reaper_task.done():
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+
+            if running is not None:
+                self.media_pool_reaper_event.clear()
+                self.media_pool_reaper_task = running.create_task(self.media_pool_reaper())
 
     async def get_dc_option(
         self,

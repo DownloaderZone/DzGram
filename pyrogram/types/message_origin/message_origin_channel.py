@@ -20,7 +20,6 @@ from datetime import datetime
 
 from .message_origin import MessageOrigin
 
-import pyrogram
 from pyrogram import types, enums
 
 

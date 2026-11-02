@@ -68,7 +68,6 @@ from .get_chat_audios_count import GetChatAudiosCount
 from .get_chat_audios import GetChatAudios
 from .remove_profile_audio import RemoveProfileAudio
 from .set_profile_audio_position import SetProfileAudioPosition
-from .edit_channel_news import EditChannelNews
 from .get_forum_topics_by_id import GetForumTopicsByID
 from .create_forum_topic import CreateForumTopic
 from .get_forum_topics import GetForumTopics
@@ -126,7 +125,6 @@ class Chats(
     GetChatAudios,
     RemoveProfileAudio,
     SetProfileAudioPosition,
-    EditChannelNews,
     GetForumTopicsByID,
     CreateForumTopic,
     GetForumTopics,

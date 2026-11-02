@@ -18,7 +18,7 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from typing import Optional, Union
+from typing import Optional
 
 import pyrogram
 from pyrogram import raw

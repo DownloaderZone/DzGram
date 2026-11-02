@@ -18,10 +18,9 @@
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
 import io
-from typing import Optional, Union
+from typing import Union
 
 from .input_paid_media import InputPaidMedia
-from ... import enums
 
 
 class InputPaidMediaPhoto(InputPaidMedia):

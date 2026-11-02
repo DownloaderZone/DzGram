@@ -67,11 +67,14 @@ async def _wait_upload_workers(
     workers: list,
     *,
     cancel: bool = False,
-    timeout: float = UPLOAD_WORKER_SHUTDOWN_TIMEOUT,
+    timeout: float = None,
 ) -> list:
     """Collect upload workers without allowing cleanup to block forever."""
     if not workers:
         return []
+
+    if timeout is None:
+        timeout = UPLOAD_WORKER_SHUTDOWN_TIMEOUT
 
     if cancel:
         for task in workers:
@@ -154,6 +157,13 @@ async def get_upload_sessions(
 ):
     if getattr(getattr(client, "me", None), "is_bot", False):
         return await client._get_media_session_pool(dc_id, count)
+
+    ensure_reaper = getattr(client, "ensure_media_reaper", None)
+    if ensure_reaper is not None:
+        # Keep the dedicated upload pool bounded too: without a reaper it keeps
+        # every connection open for the whole client lifetime.
+        ensure_reaper()
+
     async with client.upload_sessions_lock:
         sessions = client.upload_sessions.get(dc_id)
         if sessions is None:
@@ -273,6 +283,10 @@ class SaveFile:
                         return
                     try:
                         for attempt in range(1, UPLOAD_PART_RETRIES + 1):
+                            # Remember which transport this attempt used so a
+                            # concurrent restart from another worker is not
+                            # undone by quarantining the fresh connection.
+                            attempt_connection = getattr(session, "connection", None)
                             try:
                                 await _send_part(session, data)
                                 break
@@ -291,7 +305,11 @@ class SaveFile:
                                     connected = getattr(
                                         session, "is_connected", None
                                     )
-                                    if connected is not None:
+                                    if (
+                                        connected is not None
+                                        and getattr(session, "connection", None)
+                                        is attempt_connection
+                                    ):
                                         connected.clear()
 
                                 previous = session
@@ -623,20 +641,28 @@ class SaveFile:
             else:
                 # EOF means all parts were queued, not acknowledged. Keep
                 # growing the worker pool while the remaining parts drain.
-                if pool_growth_task is not None and not is_bot:
-                    await pool_growth_task
-                if is_bot:
-                    last_acked = _acked[0]
-                    last_completion = time.monotonic()
-                    while _acked[0] < file_total_parts - _starting_part and not errors:
-                        await _check_workers()
-                        if _acked[0] != last_acked:
-                            last_acked = _acked[0]
-                            last_completion = time.monotonic()
-                            await _report(_acked[0])
-                        elif time.monotonic() - last_completion > STALL_TIMEOUT:
-                            raise TimeoutError("Upload stalled while awaiting part acknowledgements")
-                        await asyncio.sleep(0.01)
+                last_acked = _acked[0]
+                last_completion = time.monotonic()
+                total_parts = file_total_parts - _starting_part
+
+                while _acked[0] < total_parts and not errors:
+                    await _check_workers()
+
+                    if _acked[0] != last_acked:
+                        last_acked = _acked[0]
+                        last_completion = time.monotonic()
+                        await _report(_acked[0])
+                        continue
+
+                    if time.monotonic() - last_completion > STALL_TIMEOUT:
+                        raise TimeoutError(
+                            "Upload stalled while awaiting part acknowledgements "
+                            f"({total_parts - _acked[0]} of {total_parts} part(s) "
+                            "still unacknowledged)"
+                        )
+
+                    await asyncio.sleep(0.05)
+
                 await stop_pool_growth()
                 results = await _stop_upload_workers(queue, workers)
                 for r in results:

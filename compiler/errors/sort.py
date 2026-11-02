@@ -61,19 +61,19 @@ elif sys.argv[1] == "scrape":
             if k.endswith("_*"):
                 continue
             g = d.get("descriptions")
-            l = g.get(k)
-            if not l:
+            desc = g.get(k)
+            if not desc:
                 continue
             m = k.replace("_%d", "_X")
             if "_X" in m:
-                l = l.replace("for the specified number of", "{value}")
-            l = l.replace("%d", "{value}")
-            l = l.replace("\"", "'")
-            l = l.replace("&raquo;", "»")
-            l = l.replace("&laquo;", "«")
-            l = l.replace(" »", "")
-            l = l.replace("](/api/", f"]({b}/api/")
-            dct[m] = l
+                desc = desc.replace("for the specified number of", "{value}")
+            desc = desc.replace("%d", "{value}")
+            desc = desc.replace("\"", "'")
+            desc = desc.replace("&raquo;", "»")
+            desc = desc.replace("&laquo;", "«")
+            desc = desc.replace(" »", "")
+            desc = desc.replace("](/api/", f"]({b}/api/")
+            dct[m] = desc
 
         keys = sorted(dct)
         

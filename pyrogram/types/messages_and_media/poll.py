@@ -24,7 +24,6 @@ import pyrogram
 from pyrogram import enums, raw, types, utils
 from ..object import Object
 from ..update import Update
-from .message import Str
 
 
 class Poll(Object, Update):

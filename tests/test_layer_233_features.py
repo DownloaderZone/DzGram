@@ -112,62 +112,6 @@ def test_prepare_photo_upload_reencodes_heavy_png(tmp_path):
         assert image.format == "JPEG"
 
 
-def test_feed_messages_parse_empty():
-    result = run(
-        types.FeedMessages._parse(
-            object(),
-            raw.types.feed.FeedMessages(
-                messages=[],
-                chats=[],
-                users=[],
-            ),
-        )
-    )
-
-    assert result.messages == []
-    assert result.max_position is None
-
-
-def test_interest_categories_parse():
-    result = types.InterestCategories._parse(
-        raw.types.feed.InterestCategories(
-            categories=[
-                raw.types.feed.InterestCategory(id=1, title="Tech", emoji="💻")
-            ],
-            selected=[1],
-        )
-    )
-
-    assert result.selected == [1]
-    assert result.categories[0].title == "Tech"
-
-
-def test_agent_providers_parse_not_modified():
-    result = types.AgentProviders._parse(
-        raw.types.agent.ProvidersNotModified()
-    )
-
-    assert result.providers == []
-
-
-def test_agent_settings_parse():
-    result = types.AgentSettings._parse(
-        raw.types.agent.Settings(
-            keys=[
-                raw.types.agent.ProviderKey(
-                    provider="openai",
-                    key_last4="1234",
-                    date_connected=1,
-                )
-            ],
-            active_provider="openai",
-        )
-    )
-
-    assert result.active_provider == "openai"
-    assert result.keys[0].key_last4 == "1234"
-
-
 def test_share_theme_parse_default():
     result = types.ShareTheme._parse(raw.types.ShareThemeDefault())
 
@@ -195,12 +139,12 @@ def test_join_chat_parses_chat_invite_join_result():
     )
     client = JoinChatClient(result)
 
-    chat = run(JoinChat.join_chat(client, "news", for_news=True))
+    chat = run(JoinChat.join_chat(client, "news"))
 
     assert chat.id == utils.get_channel_id(1)
     assert chat.title == "News"
     assert isinstance(client.rpc, raw.functions.channels.JoinChannel)
-    assert client.rpc.for_news is True
+    assert not hasattr(client.rpc, "for_news")
 
 
 def test_join_chat_reports_guard_bot_web_view():
@@ -237,18 +181,7 @@ def test_layer_233_methods_exist():
         "edit_message_widget_data",
         "set_bot_widget_query_answer",
         "import_card",
-        "edit_channel_news",
         "request_recurring_payment",
         "delete_folder",
-        "get_for_you",
-        "get_feed",
-        "set_interest_categories",
-        "read_feed",
-        "get_interest_categories",
-        "connect_agent",
-        "disconnect_agent",
-        "get_agent_providers",
-        "get_agent_settings",
-        "set_agent_active_provider",
     ):
         assert hasattr(Client, name), name

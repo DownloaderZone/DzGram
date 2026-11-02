@@ -21,7 +21,6 @@ from typing import Optional, Union, Callable
 
 import pyrogram
 from pyrogram import raw, types, utils, enums
-from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType
 from ..object import Object
 
 

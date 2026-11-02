@@ -99,8 +99,10 @@ class SponsoredMessage(Object):
 
     @staticmethod
     def _parse(client, sponsored_message: "raw.types.SponsoredMessage"):
+        # Sponsored messages carry no user list; resolve entities with an
+        # empty users map so mentions stay unpopulated instead of raising
         entities = [
-            types.MessageEntity._parse(client, entity, users)
+            types.MessageEntity._parse(client, entity, {})
             for entity in getattr(sponsored_message, "entities", [])
         ]
         entities = types.List(

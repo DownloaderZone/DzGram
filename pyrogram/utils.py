@@ -24,6 +24,7 @@ import hashlib
 import os
 import re
 import struct
+import warnings
 from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime, timezone
 from getpass import getpass
@@ -54,11 +55,22 @@ PyromodConfig = SimpleNamespace(
 
 def get_event_loop() -> asyncio.AbstractEventLoop:
     try:
-        loop = asyncio.get_event_loop()
+        # Fast path: inside a coroutine or wherever a loop is running
+        return asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop
+        pass
+
+    with warnings.catch_warnings():
+        # get_event_loop() still returns the current loop when one is set,
+        # but DeprecationWarnings were added on 3.12+ and removal is planned;
+        # ignore them and recreate only when the interpreter truly lacks one
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            return asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
 
 
 async def ainput(prompt: str = "", *, hide: bool = False, loop: Optional[asyncio.AbstractEventLoop] = None):

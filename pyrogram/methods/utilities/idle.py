@@ -73,11 +73,15 @@ async def idle():
     """
 
     if sys.platform.startswith("win") or sys.version_info <= (3, 10):
+        loop = asyncio.get_running_loop()
         task = None
 
         def signal_handler(signum, __):
             log.info(f"Stop signal received ({signals[signum]}). Exiting...")
-            asyncio.get_event_loop().run_in_executor(None, task.cancel)
+            # Signal handlers run in the main thread outside of the loop. Wake
+            # the loop without touching asyncio internals or blocking anything:
+            # call_soon_threadsafe is safe from any thread.
+            loop.call_soon_threadsafe(task.cancel)
 
         for s in (SIGINT, SIGTERM, SIGABRT):
             signal_fn(s, signal_handler)
@@ -90,7 +94,7 @@ async def idle():
             except asyncio.CancelledError:
                 break
     else:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         sig_event = asyncio.Event()
 
         def signal_handler(signum):

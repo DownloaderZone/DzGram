@@ -144,7 +144,7 @@ class Markdown:
 
                 # Escape if strict
                 if strict:
-                    bq_lines = [html.escape(l) for l in bq_lines]
+                    bq_lines = [html.escape(s) for s in bq_lines]
 
                 # Create the merged blockquote entity
                 joined_lines = "\n".join(bq_lines)
@@ -367,7 +367,7 @@ class Markdown:
                     text_subset = text[s:e]
                     lines = text_subset.splitlines()
                     for line_num, line in enumerate(lines):
-                        line_start = s + sum(len(l) + 1 for l in lines[:line_num])
+                        line_start = s + sum(len(part) + 1 for part in lines[:line_num])
                         
                         # Blockquote prefixes MUST be placed at the absolute start of the line.
                         # We use `-10000 + i` to ensure they are popped last and end up on the far left,

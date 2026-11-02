@@ -23,7 +23,6 @@ from typing import Optional, Union
 
 import pyrogram
 from pyrogram import raw, utils, types, enums
-from pyrogram.file_id import FileType
 
 log = logging.getLogger(__name__)
 

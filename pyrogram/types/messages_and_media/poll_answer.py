@@ -20,10 +20,9 @@
 from typing import Optional
 
 import pyrogram
-from pyrogram import enums, raw, types, utils
+from pyrogram import raw, types
 from ..object import Object
 from ..update import Update
-from .message import Str
 
 
 class PollAnswer(Object, Update):

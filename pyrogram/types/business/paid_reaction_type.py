@@ -19,7 +19,7 @@
 from ..object import Object
 
 import pyrogram
-from pyrogram import raw, types
+from pyrogram import raw
 
 
 class PaidReactionType(Object):

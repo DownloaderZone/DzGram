@@ -17,7 +17,6 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with DzGram.  If not, see <http://www.gnu.org/licenses/>.
 
-import pyrogram
 from pyrogram import raw, types
 
 from ..object import Object
