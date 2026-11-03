@@ -1830,6 +1830,7 @@ class Client(Methods):
 
                 async def fetch_part(media, at):
                     slept = 0
+                    transport_attempts = 0
                     while True:
                         if _paced:
                             await _getfile_rate.acquire()
@@ -1848,6 +1849,33 @@ class Client(Methods):
                             if _is_bot:
                                 _getfile_rate.pause(e.value)
                             await asyncio.sleep(e.value)
+                        except (OSError, TimeoutError, ConnectionResetError) as e:
+                            transport_attempts += 1
+                            if transport_attempts > Session.MAX_RETRIES:
+                                raise
+                            # The connection is broken. Make sure the session is
+                            # restarted before the next attempt so we are not
+                            # retrying against a dead socket. If a background
+                            # restart is already in progress, restart() waits
+                            # for it (see Session.restart).
+                            connected = getattr(media, "is_connected", None)
+                            restart = getattr(media, "restart", None)
+                            if (connected is None or not connected.is_set()) and restart:
+                                try:
+                                    await restart(
+                                        max_attempts=Session.MAX_AUTO_RESTART_ATTEMPTS
+                                    )
+                                except (Exception, asyncio.CancelledError):
+                                    pass
+                            (log.warning if transport_attempts > 1 else log.debug)(
+                                "Retrying download chunk at offset %s after %s "
+                                "(attempt %d/%d)",
+                                at,
+                                str(e) or type(e).__name__,
+                                transport_attempts,
+                                Session.MAX_RETRIES,
+                            )
+                            await asyncio.sleep(min(2 ** (transport_attempts - 1), 5))
 
                 if needs_pool and not use_fake:
                     async def prefetch():
@@ -2048,16 +2076,45 @@ class Client(Methods):
                                 return
 
                             ahead = prefetched.pop(offset, None)
-                            if ahead is not None:
-                                try:
-                                    r = await ahead
-                                finally:
-                                    prefetch_budget.release()
                             await buffer_slots.acquire()
 
                             try:
-                                if ahead is None:
+                                if ahead is not None:
+                                    try:
+                                        r = await ahead
+                                    finally:
+                                        prefetch_budget.release()
+                                else:
                                     r = await fetch_part(session, offset)
+                            except (OSError, TimeoutError):
+                                # fetch_part already retried and restarted the
+                                # session; the transport is genuinely broken.
+                                # Try a different pool member before giving up on
+                                # this offset. A GetFile at a given offset is
+                                # idempotent, so re-fetching is always safe.
+                                if n_sessions > 1:
+                                    # Clear the broken connection so pool
+                                    # selection skips it.
+                                    connected = getattr(session, "is_connected", None)
+                                    if connected is not None:
+                                        connected.clear()
+                                    for _ in range(n_sessions - 1):
+                                        idx = pool.index(session) if session in pool else 0
+                                        nxt = pool[(idx + 1) % n_sessions]
+                                        nxt_connected = getattr(nxt, "is_connected", None)
+                                        if nxt_connected is None or nxt_connected.is_set():
+                                            try:
+                                                r = await fetch_part(nxt, offset)
+                                                session = nxt
+                                                break
+                                            except (OSError, TimeoutError):
+                                                continue
+                                    else:
+                                        buffer_slots.release()
+                                        raise
+                                else:
+                                    buffer_slots.release()
+                                    raise
                             except BaseException:
                                 buffer_slots.release()
                                 raise

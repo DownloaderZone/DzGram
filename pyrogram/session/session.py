@@ -1133,7 +1133,18 @@ class Session:
                 )
 
                 if isinstance(e, ConnectionResetError):
-                    await asyncio.sleep(0.1)
+                    # The transport is dead: a 0.1s sleep and blind retry just
+                    # hits the same closed socket again. Wait for the background
+                    # restart scheduled by recv_worker (or start one ourselves
+                    # if that race was lost) so the retry lands on a live
+                    # connection.
+                    try:
+                        await self.restart()
+                    except (OSError, TimeoutError):
+                        # The reconnect cooldown rejected another attempt, or
+                        # the last cycle just failed. Back off here rather than
+                        # stacking handshake cycles from every waiting worker.
+                        await asyncio.sleep(min(2 ** (attempt - 1), 5))
                 elif isinstance(e, (InternalServerError, ServiceUnavailable)) or (
                     isinstance(e, TimeoutError)
                     and time.monotonic() - self.last_packet_received < self.WAIT_TIMEOUT
