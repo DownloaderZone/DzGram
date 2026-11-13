@@ -37,6 +37,7 @@ from .on_pre_checkout_query import OnPreCheckoutQuery
 from .on_shipping_query import OnShippingQuery
 from .on_story import OnStory
 from .on_managed_bot import OnManagedBot
+from .on_widget_query import OnWidgetQuery
 
 
 class Decorators(
@@ -63,5 +64,6 @@ class Decorators(
     OnStory,
     OnManagedBot,
     OnRawUpdate,
+    OnWidgetQuery,
 ):
     pass

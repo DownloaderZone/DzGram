@@ -97,6 +97,8 @@ from .delete_poll_option import DeletePollOption
 from .get_share_theme_backdrops import GetShareThemeBackdrops
 from .set_share_theme import SetShareTheme
 from .get_rich_message import GetRichMessage
+from .send_widget import SendWidget
+from .send_shared_widget import SendSharedWidget
 from .search_posts import SearchPosts
 from .send_reaction import SendReaction
 from .start_bot import StartBot
@@ -182,6 +184,8 @@ class Messages(
     GetShareThemeBackdrops,
     SetShareTheme,
     GetRichMessage,
+    SendWidget,
+    SendSharedWidget,
     SearchPosts,
     SendReaction,
     StartBot

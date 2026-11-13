@@ -35,6 +35,7 @@ from pyrogram.handlers import (
     ShippingQueryHandler,
     PreCheckoutQueryHandler,
     PurchasedPaidMediaHandler,
+    WidgetQueryHandler,
     PollHandler,
     ConversationHandler,
 
@@ -66,6 +67,9 @@ from pyrogram.raw.types import (
     UpdateBotDeleteBusinessMessage,
     UpdateBotPrecheckoutQuery,
     UpdateBotShippingQuery,
+    UpdateBotWidgetQuery,
+    UpdateInlineBotWidgetQuery,
+    UpdateBotWidgetCopyQuery,
     UpdateStory,
     UpdateBusinessBotCallbackQuery,
     UpdateBotBusinessConnect,
@@ -93,6 +97,7 @@ class Dispatcher:
     MESSAGE_BOT_A_REACTION_UPDATES = (UpdateBotMessageReactions,)
     PRE_CHECKOUT_QUERY_UPDATES = (UpdateBotPrecheckoutQuery,)
     SHIPPING_QUERY_UPDATES = (UpdateBotShippingQuery,)
+    WIDGET_QUERY_UPDATES = (UpdateBotWidgetQuery, UpdateInlineBotWidgetQuery, UpdateBotWidgetCopyQuery)
     NEW_STORY_UPDATES = (UpdateStory,)
     BOT_BUSINESS_CONNECT_UPDATES = (UpdateBotBusinessConnect,)
     PURCHASED_PAID_MEDIA_UPDATES = (UpdateBotPurchasedPaidMedia,)
@@ -215,6 +220,12 @@ class Dispatcher:
                 ShippingQueryHandler
             )
 
+        async def widget_query_parser(update, users, chats):
+            return (
+                await pyrogram.types.WidgetQuery._parse(self.client, update, users, chats),
+                WidgetQueryHandler
+            )
+
         async def pre_checkout_query_parser(update, users, chats):
             return (
                 await pyrogram.types.PreCheckoutQuery._parse(self.client, update, users),
@@ -278,6 +289,7 @@ class Dispatcher:
             Dispatcher.MESSAGE_BOT_NA_REACTION_UPDATES: message_bot_na_reaction_parser,
             Dispatcher.MESSAGE_BOT_A_REACTION_UPDATES: message_bot_a_reaction_parser,
             Dispatcher.SHIPPING_QUERY_UPDATES: shipping_query_parser,
+            Dispatcher.WIDGET_QUERY_UPDATES: widget_query_parser,
             Dispatcher.PRE_CHECKOUT_QUERY_UPDATES: pre_checkout_query_parser,
             Dispatcher.NEW_STORY_UPDATES: story_parser,
             Dispatcher.BOT_BUSINESS_CONNECT_UPDATES: bot_business_connect_parser,

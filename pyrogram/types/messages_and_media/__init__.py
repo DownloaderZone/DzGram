@@ -139,6 +139,7 @@ from .star_gift_deposit_payload import StarGiftDepositPayload
 from .web_view_result import WebViewResult
 from .widget_public_data import WidgetPublicData
 from .bot_widget_query_answer import BotWidgetQueryAnswer
+from .widget import Widget
 
 __all__ = [
     "Animation",
@@ -287,4 +288,5 @@ __all__ = [
     "WebViewResult",
     "WidgetPublicData",
     "BotWidgetQueryAnswer",
+    "Widget",
 ]

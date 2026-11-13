@@ -88,5 +88,8 @@ class MessageMediaType(AutoName):
     CHECKLIST = auto()
     "Checklist"
 
+    WIDGET = auto()
+    "Widget"
+
     UNKNOWN = auto()
     "This message media is unsupported by the current version of Pyrogram"

@@ -61,6 +61,8 @@ from .input_rich_block import (
 from .input_rich_message import InputRichMessage
 from .input_rich_message_content import InputRichMessageContent
 from .input_rich_message_media import InputRichMessageMedia
+from .input_widget_message_content import InputWidgetMessageContent
+from .input_shared_widget_message_content import InputSharedWidgetMessageContent
 
 __all__ = [
     "ExternalReplyInfo",
@@ -71,6 +73,8 @@ __all__ = [
     "InputVenueMessageContent",
     "InputContactMessageContent",
     "InputInvoiceMessageContent",
+    "InputWidgetMessageContent",
+    "InputSharedWidgetMessageContent",
     "ReplyParameters",
     "TextQuote",
     "InputChecklist",

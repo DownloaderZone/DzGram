@@ -184,6 +184,9 @@ class Message(Object, Update):
         paid_media (:obj:`~pyrogram.types.PaidMediaInfo`, *optional*):
             Message contains paid media; information about the paid media.
 
+        widget (:obj:`~pyrogram.types.Widget`, *optional*):
+            Message contains an HTML widget (Bot API 10.4); information about the widget.
+
         photo (:obj:`~pyrogram.types.Photo`, *optional*):
             Message is a photo, information about the photo.
 
@@ -541,6 +544,7 @@ class Message(Object, Update):
         show_caption_above_media: bool = None,
         has_media_spoiler: bool = None,
         checklist: Optional["types.Checklist"] = None,
+        widget: "types.Widget" = None,
         contact: "types.Contact" = None,
         dice: "types.Dice" = None,
         game: "types.Game" = None,
@@ -747,6 +751,7 @@ class Message(Object, Update):
         self.screenshot_taken = screenshot_taken
         self.paid_star_count = paid_star_count
         self.checklist = checklist
+        self.widget = widget
         self.checklist_tasks_done = checklist_tasks_done
         self.checklist_tasks_added = checklist_tasks_added
         self.reply_to_checklist_task_id = reply_to_checklist_task_id
@@ -1446,6 +1451,9 @@ class Message(Object, Update):
                 elif isinstance(media, raw.types.MessageMediaToDo):
                     media_type = enums.MessageMediaType.CHECKLIST
                     checklist = types.Checklist._parse(client, media, users, chats)
+                elif isinstance(media, raw.types.MessageMediaWidget):
+                    media_type = enums.MessageMediaType.WIDGET
+                    widget = types.Widget._parse(media)
                 else:
                     media = None
                     media_type = enums.MessageMediaType.UNKNOWN
@@ -1520,6 +1528,7 @@ class Message(Object, Update):
                 photo=photo,
                 location=location,
                 checklist=checklist,
+            widget=widget,
                 contact=contact,
                 venue=venue,
                 audio=audio,
