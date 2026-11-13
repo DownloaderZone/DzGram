@@ -111,6 +111,9 @@ class Dispatcher:
 
         self.handler_worker_tasks = []
         self.locks_list = []
+        self.relief_workers = []
+        self._parked = 0
+        self._park_lock = asyncio.Lock()
 
         self.updates_queue = asyncio.Queue()
         self.groups = OrderedDict()
@@ -317,16 +320,37 @@ class Dispatcher:
 
     async def stop(self):
         if not self.client.no_updates:
-            for i in range(self.client.workers):
+            for i in range(self.client.workers + len(self.relief_workers)):
                 self.updates_queue.put_nowait(None)
 
             for i in self.handler_worker_tasks:
                 await i
 
+            for i in self.relief_workers:
+                try:
+                    await i
+                except Exception:
+                    pass
+
             self.handler_worker_tasks.clear()
+            self.relief_workers.clear()
             self.groups.clear()
 
             log.info("Stopped %s HandlerTasks", self.client.workers)
+
+    async def park(self):
+        """Temporarily park a worker waiting for conversation input, spawning a relief worker."""
+        async with self._park_lock:
+            self._parked += 1
+            if len(self.relief_workers) < self._parked and len(self.relief_workers) < self.client.workers * 2:
+                lock = asyncio.Lock()
+                task = self.client.loop.create_task(self.handler_worker(lock, relief=True))
+                self.relief_workers.append(task)
+
+    async def unpark(self):
+        """Unpark after conversation input has been received."""
+        async with self._park_lock:
+            self._parked = max(0, self._parked - 1)
 
     def add_handler(self, handler, group: int):
         async def fn():
@@ -361,8 +385,18 @@ class Dispatcher:
 
         self.client.loop.create_task(fn())
 
-    async def handler_worker(self, lock):
+    async def handler_worker(self, lock, relief: bool = False):
         while True:
+            # If relief worker and extra workers are no longer needed, retire cleanly
+            if relief and self._parked < len(self.relief_workers):
+                async with self._park_lock:
+                    if self._parked < len(self.relief_workers):
+                        try:
+                            self.relief_workers.remove(asyncio.current_task())
+                        except (ValueError, KeyError):
+                            pass
+                        break
+
             # Back off dispatch when rate limiter is congested
             rl = getattr(self.client, "rate_limiter", None)
             if rl is not None and not rl.is_closed:

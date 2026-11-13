@@ -264,6 +264,14 @@ class DownloadMedia:
 
             file_id_obj = FileId.decode(file_id_str)
 
+            # Give the transfer engine enough context to renew an expired
+            # file reference (FILE_REFERENCE_EXPIRED) without failing the
+            # whole download.
+            if isinstance(message, types.Message):
+                chat = getattr(message, "chat", None)
+                if chat is not None:
+                    file_id_obj._refresh_context = (chat.id, message.id)
+
             file_type = file_id_obj.file_type
             media_file_name = getattr(media, "file_name", "")  # TODO
             file_size = getattr(media, "file_size", 0)

@@ -25,9 +25,11 @@
 import base64
 import inspect
 import logging
+import os
 import sqlite3
 import struct
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -142,6 +144,12 @@ class SQLiteStorage(Storage):
         self.session_string = session_string.strip() if isinstance(session_string, str) else session_string
         self.in_memory = in_memory
         self.use_wal = use_wal
+
+        # In-memory caches for high-throughput operations (PeerRowCache & SessionAttrCache)
+        self._peer_cache_max = int(os.environ.get("DZGRAM_PEER_CACHE_SIZE", 4096))
+        self._peer_id_cache = OrderedDict()  # peer_id -> (access_hash, type)
+        self._peer_username_cache = OrderedDict()  # username -> (peer_id, access_hash, type, cached_time)
+        self._session_cache = {}  # attr -> value
 
         if self.in_memory:
             self.database = ":memory:"
@@ -354,7 +362,21 @@ CREATE TABLE update_state
                 )
 
     async def update_peers(self, peers: list[tuple[int, int, str, list[str], str]]):
-        return await self.loop.run_in_executor(self.executor, self._update_peers_impl, peers)
+        res = await self.loop.run_in_executor(self.executor, self._update_peers_impl, peers)
+        for p in peers:
+            p_id, p_hash, p_type = p[0], p[1], p[2]
+            p_usernames = p[3] if len(p) > 3 and p[3] else []
+            # Update cache
+            if len(self._peer_id_cache) >= self._peer_cache_max:
+                self._peer_id_cache.popitem(last=False)
+            self._peer_id_cache[p_id] = (p_hash, p_type)
+
+            now = time.time()
+            for u in p_usernames:
+                if len(self._peer_username_cache) >= self._peer_cache_max:
+                    self._peer_username_cache.popitem(last=False)
+                self._peer_username_cache[u] = (p_id, p_hash, p_type, now)
+        return res
 
     def _update_usernames_impl(self, usernames: list[tuple[int, list[str]]]):
         with self.conn:
@@ -399,10 +421,19 @@ CREATE TABLE update_state
             ).fetchone()
 
     async def get_peer_by_id(self, peer_id: int):
+        if peer_id in self._peer_id_cache:
+            p_hash, p_type = self._peer_id_cache[peer_id]
+            self._peer_id_cache.move_to_end(peer_id)
+            return get_input_peer(peer_id, p_hash, p_type)
+
         r = await self.loop.run_in_executor(self.executor, self._get_peer_by_id_impl, peer_id)
 
         if r is None:
             raise KeyError(f"ID not found: {peer_id}")
+
+        if len(self._peer_id_cache) >= self._peer_cache_max:
+            self._peer_id_cache.popitem(last=False)
+        self._peer_id_cache[peer_id] = (r[1], r[2])
 
         return get_input_peer(*r)
 
@@ -417,6 +448,14 @@ CREATE TABLE update_state
             ).fetchone()
 
     async def get_peer_by_username(self, username: str):
+        if username in self._peer_username_cache:
+            p_id, p_hash, p_type, cached_time = self._peer_username_cache[username]
+            if abs(time.time() - cached_time) <= self.USERNAME_TTL:
+                self._peer_username_cache.move_to_end(username)
+                return get_input_peer(p_id, p_hash, p_type)
+            else:
+                self._peer_username_cache.pop(username, None)
+
         r = await self.loop.run_in_executor(self.executor, self._get_peer_by_username_impl, username)
 
         if r is None:
@@ -424,6 +463,10 @@ CREATE TABLE update_state
 
         if abs(time.time() - r[3]) > self.USERNAME_TTL:
             raise KeyError(f"Username expired: {username}")
+
+        if len(self._peer_username_cache) >= self._peer_cache_max:
+            self._peer_username_cache.popitem(last=False)
+        self._peer_username_cache[username] = (r[0], r[1], r[2], r[3])
 
         return get_input_peer(*r[:3])
 
@@ -451,7 +494,11 @@ CREATE TABLE update_state
 
     async def _get(self):
         attr = inspect.stack()[2].function
-        return await self.loop.run_in_executor(self.executor, self._get_impl, attr)
+        if attr in self._session_cache:
+            return self._session_cache[attr]
+        val = await self.loop.run_in_executor(self.executor, self._get_impl, attr)
+        self._session_cache[attr] = val
+        return val
 
     def _set_impl(self, attr: str, value: any):
         with self.conn:
@@ -462,7 +509,7 @@ CREATE TABLE update_state
 
     async def _set(self, value: Any):
         attr = inspect.stack()[2].function
-
+        self._session_cache[attr] = value
         return await self.loop.run_in_executor(self.executor, self._set_impl, attr, value)
 
     async def _accessor(self, value: Any = object):

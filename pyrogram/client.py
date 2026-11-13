@@ -51,7 +51,8 @@ from pyrogram.errors import (
     VolumeLocNotFound, ChannelPrivate,
     BadRequest, AuthBytesInvalid,
     FloodWait, FloodPremiumWait,
-    ChannelInvalid, PersistentTimestampInvalid, PersistentTimestampOutdated
+    ChannelInvalid, PersistentTimestampInvalid, PersistentTimestampOutdated,
+    FileReferenceExpired
 )
 from pyrogram.handlers.handler import Handler
 from pyrogram.methods import Methods
@@ -113,6 +114,62 @@ class ReadAhead:
     def release_all(self):
         while self._held:
             self.release()
+
+
+FILE_REFERENCE_REFRESH_ATTEMPTS = int(os.environ.get("DZGRAM_FILE_REFERENCE_REFRESH", 2))
+
+# Attributes of pyrogram media types that recursively carry file ids.
+_FILE_ID_ATTRS = frozenset((
+    "photo", "video", "audio", "voice", "document", "animation", "sticker",
+    "video_note", "new_chat_photo", "sizes", "thumbs", "media", "paid_media",
+    "story", "reply_to_story", "cover", "alternative_videos",
+))
+
+
+def _collect_file_ids(obj, out, depth=0):
+    """Depth-limited walk over pyrogram types collecting decoded FileId objects.
+
+    Used to match a re-fetched message's media against the file being
+    downloaded so an expired file reference can be renewed in place.
+    """
+    if depth > 5 or obj is None or len(out) >= 64:
+        return
+
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        for item in obj:
+            _collect_file_ids(item, out, depth + 1)
+        return
+
+    if isinstance(obj, (str, bytes, bytearray, int, float, bool, datetime)):
+        return
+
+    file_id = getattr(obj, "file_id", None)
+
+    if isinstance(file_id, str):
+        try:
+            out.append(FileId.decode(file_id))
+        except Exception:
+            pass
+
+    for name in _FILE_ID_ATTRS:
+        value = getattr(obj, name, None)
+        if value is not None and not isinstance(value, (str, bytes, int, float, bool)):
+            _collect_file_ids(value, out, depth + 1)
+
+
+def _find_file_reference(message, media_id: int) -> Optional[bytes]:
+    """Return the file reference matching *media_id* on a re-fetched message."""
+    found = []
+    try:
+        _collect_file_ids(message, found)
+    except Exception:
+        return None
+
+    for decoded in found:
+        if decoded.media_id == media_id and decoded.file_reference:
+            return decoded.file_reference
+
+    return None
 
 
 _pwrite = getattr(os, "pwrite", None)
@@ -534,7 +591,7 @@ class Client(Methods):
         self._media_pool_tasks = set()
         self._media_sessions_locks = {}
         self._session_locks = {}
-        self._session_creation_gate = asyncio.Semaphore(4)
+        self._session_creation_gate = asyncio.Semaphore(int(os.environ.get("DZGRAM_SESSION_GATE", 6)))
 
         # Shared reconnect governor. Media pools tear down and rebuild many
         # TCP connections at once; without pacing that burst itself trips
@@ -1684,6 +1741,60 @@ class Client(Methods):
                 shutil.move(temp_file_path, file_path)
                 return file_path
 
+    async def _refresh_file_reference(self, file_id: FileId, lock: "asyncio.Lock" = None) -> bool:
+        """Renew an expired file reference by re-fetching its source message.
+
+        Works only when the file id carries a message context (see
+        ``download_media``). The refresh is bounded: at most
+        ``FILE_REFERENCE_REFRESH_ATTEMPTS`` actual re-fetches per file id, and
+        callers whose captured reference is already the latest one (stale
+        workers racing a refresh that another worker performed) get to rebuild
+        their request without a second fetch.
+        """
+        context = getattr(file_id, "_refresh_context", None)
+
+        if not context:
+            return False
+
+        if lock is not None:
+            async with lock:
+                return await self._fetch_file_reference(file_id, context)
+
+        return await self._fetch_file_reference(file_id, context)
+
+    async def _fetch_file_reference(self, file_id: FileId, context: tuple) -> bool:
+        if getattr(file_id, "_refresh_count", 0) >= FILE_REFERENCE_REFRESH_ATTEMPTS:
+            return False
+
+        chat_id, message_id = context
+        previous = file_id.file_reference
+
+        try:
+            refreshed = await self.get_messages(chat_id, [message_id])
+        except Exception as e:
+            log.warning("File reference refresh for media %s failed: %s", file_id.media_id, e)
+            return False
+
+        file_id._refresh_count = getattr(file_id, "_refresh_count", 0) + 1
+
+        if not refreshed:
+            return False
+
+        message = refreshed[0] if utils.is_list_like(refreshed) else refreshed
+
+        if not isinstance(message, types.Message):
+            return False
+
+        new_reference = _find_file_reference(message, file_id.media_id)
+
+        # A refresh that does not change the reference is a dead end: retrying
+        # with it would loop forever.
+        if new_reference is None or new_reference == previous:
+            return False
+
+        file_id.file_reference = new_reference
+        return True
+
     async def get_file(
         self,
         file_id: FileId,
@@ -1695,44 +1806,48 @@ class Client(Methods):
         _write_file: object = None,
     ) -> AsyncGenerator[bytes, None]:
         async with self.get_file_semaphore:
-            file_type = file_id.file_type
+            def _build_location():
+                file_type = file_id.file_type
 
-            if file_type == FileType.CHAT_PHOTO:
-                if file_id.chat_id > 0:
-                    peer = raw.types.InputPeerUser(
-                        user_id=file_id.chat_id,
-                        access_hash=file_id.chat_access_hash
-                    )
-                else:
-                    if file_id.chat_access_hash == 0:
-                        peer = raw.types.InputPeerChat(
-                            chat_id=-file_id.chat_id
-                        )
-                    else:
-                        peer = raw.types.InputPeerChannel(
-                            channel_id=utils.get_channel_id(file_id.chat_id),
+                if file_type == FileType.CHAT_PHOTO:
+                    if file_id.chat_id > 0:
+                        peer = raw.types.InputPeerUser(
+                            user_id=file_id.chat_id,
                             access_hash=file_id.chat_access_hash
                         )
+                    else:
+                        if file_id.chat_access_hash == 0:
+                            peer = raw.types.InputPeerChat(
+                                chat_id=-file_id.chat_id
+                            )
+                        else:
+                            peer = raw.types.InputPeerChannel(
+                                channel_id=utils.get_channel_id(file_id.chat_id),
+                                access_hash=file_id.chat_access_hash
+                            )
 
-                location = raw.types.InputPeerPhotoFileLocation(
-                    peer=peer,
-                    photo_id=file_id.media_id,
-                    big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG
-                )
-            elif file_type == FileType.PHOTO:
-                location = raw.types.InputPhotoFileLocation(
+                    return raw.types.InputPeerPhotoFileLocation(
+                        peer=peer,
+                        photo_id=file_id.media_id,
+                        big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG
+                    )
+
+                if file_type == FileType.PHOTO:
+                    return raw.types.InputPhotoFileLocation(
+                        id=file_id.media_id,
+                        access_hash=file_id.access_hash,
+                        file_reference=file_id.file_reference,
+                        thumb_size=file_id.thumbnail_size
+                    )
+
+                return raw.types.InputDocumentFileLocation(
                     id=file_id.media_id,
                     access_hash=file_id.access_hash,
                     file_reference=file_id.file_reference,
                     thumb_size=file_id.thumbnail_size
                 )
-            else:
-                location = raw.types.InputDocumentFileLocation(
-                    id=file_id.media_id,
-                    access_hash=file_id.access_hash,
-                    file_reference=file_id.file_reference,
-                    thumb_size=file_id.thumbnail_size
-                )
+
+            location = _build_location()
 
             current = 0
             total = abs(limit) or (1 << 31) - 1
@@ -1784,10 +1899,10 @@ class Client(Methods):
                     dl_rate = int(os.environ.get("DZGRAM_BOT_DL_RATE", 64))
                     dl_burst = 16
                 elif _is_premium:
-                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_POOL", 6)))
-                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_WORKERS", 4)))
-                    dl_rate = int(os.environ.get("DZGRAM_PREMIUM_DL_RATE", 100))
-                    dl_burst = 50
+                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_POOL", 8)))
+                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_PREMIUM_DL_WORKERS", 5)))
+                    dl_rate = int(os.environ.get("DZGRAM_PREMIUM_DL_RATE", 150))
+                    dl_burst = 60
                 else:
                     dl_pool_size = max(1, int(os.environ.get("DZGRAM_DL_POOL", 5)))
                     dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_DL_WORKERS", 3)))
@@ -1824,11 +1939,13 @@ class Client(Methods):
                 prefetch_budget = ReadAhead(self.read_ahead_slots)
                 prefetch_task = None
                 prefetch_offset = offset_bytes
-                _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 150),
+                _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 200),
                                                burst=dl_burst, step=8.0 if _is_bot else 0.5)
                 _paced = _is_bot or not _is_premium
+                refresh_lock = asyncio.Lock()
 
                 async def fetch_part(media, at):
+                    nonlocal location
                     slept = 0
                     transport_attempts = 0
                     while True:
@@ -1841,6 +1958,18 @@ class Client(Methods):
                             )
                             _getfile_rate.on_success()
                             return result
+                        except FileReferenceExpired:
+                            if location.file_reference == file_id.file_reference and not (
+                                await self._refresh_file_reference(file_id, refresh_lock)
+                            ):
+                                # This request already carried the latest
+                                # reference and refreshing it did not help.
+                                raise
+                            # The refreshed reference must reach every request,
+                            # including the ones the prefetch wave is already
+                            # issuing with a captured location.
+                            location = _build_location()
+                            log.debug("Refreshed expired file reference for DC%s media %s", file_id.dc_id, file_id.media_id)
                         except (FloodWait, FloodPremiumWait) as e:
                             if e.value > 30 or slept + e.value > 30 * Session.MAX_RETRIES:
                                 raise
@@ -1900,15 +2029,24 @@ class Client(Methods):
                     prefetch_budget.release_all()
 
                 try:
-                    r = await session.invoke(
-                        raw.functions.upload.GetFile(
-                            location=location,
-                            offset=offset_bytes,
-                            limit=chunk_size
-                        ),
-                        timeout=Session.MEDIA_WAIT_TIMEOUT,
-                        sleep_threshold=30
-                    )
+                    while True:
+                        try:
+                            r = await session.invoke(
+                                raw.functions.upload.GetFile(
+                                    location=location,
+                                    offset=offset_bytes,
+                                    limit=chunk_size
+                                ),
+                                timeout=Session.MEDIA_WAIT_TIMEOUT,
+                                sleep_threshold=30
+                            )
+                            break
+                        except FileReferenceExpired:
+                            if location.file_reference == file_id.file_reference and not (
+                                await self._refresh_file_reference(file_id, refresh_lock)
+                            ):
+                                raise
+                            location = _build_location()
                 except BaseException:
                     await drop_prefetch()
                     raise
@@ -2000,15 +2138,24 @@ class Client(Methods):
                     # Sequential fallback when file size is unknown
                     if file_size <= 0:
                         while current < total:
-                            r = await session.invoke(
-                                raw.functions.upload.GetFile(
-                                    location=location,
-                                    offset=offset_bytes,
-                                    limit=chunk_size,
-                                ),
-                                timeout=Session.MEDIA_WAIT_TIMEOUT,
-                                sleep_threshold=30,
-                            )
+                            while True:
+                                try:
+                                    r = await session.invoke(
+                                        raw.functions.upload.GetFile(
+                                            location=location,
+                                            offset=offset_bytes,
+                                            limit=chunk_size,
+                                        ),
+                                        timeout=Session.MEDIA_WAIT_TIMEOUT,
+                                        sleep_threshold=30,
+                                    )
+                                    break
+                                except FileReferenceExpired:
+                                    if location.file_reference == file_id.file_reference and not (
+                                        await self._refresh_file_reference(file_id, refresh_lock)
+                                    ):
+                                        raise
+                                    location = _build_location()
                             chunk = r.bytes
                             if not chunk:
                                 return
@@ -2258,32 +2405,62 @@ class Client(Methods):
                         return covering
 
                     try:
-                        while True:
-                            if _is_bot or not _is_premium:
-                                await _cdn_rate.acquire()
-                            r2 = await cdn_session.invoke(
-                                raw.functions.upload.GetCdnFile(
-                                    file_token=r.file_token,
-                                    offset=offset_bytes,
-                                    limit=chunk_size
-                                ),
-                                timeout=Session.MEDIA_WAIT_TIMEOUT
-                            )
+                        async def _fetch_cdn(at):
+                            # Fetches one CDN chunk, transparently handling the
+                            # ReuploadNeeded dance. Returns None when the CDN
+                            # says the file must be re-uploaded from scratch.
+                            while True:
+                                if _is_bot or not _is_premium:
+                                    await _cdn_rate.acquire()
+                                r2 = await cdn_session.invoke(
+                                    raw.functions.upload.GetCdnFile(
+                                        file_token=r.file_token,
+                                        offset=at,
+                                        limit=chunk_size
+                                    ),
+                                    timeout=Session.MEDIA_WAIT_TIMEOUT
+                                )
 
-                            if isinstance(r2, raw.types.upload.CdnFileReuploadNeeded):
-                                try:
-                                    await session.invoke(
-                                        raw.functions.upload.ReuploadCdnFile(
-                                            file_token=r.file_token,
-                                            request_token=r2.request_token
+                                if isinstance(r2, raw.types.upload.CdnFileReuploadNeeded):
+                                    try:
+                                        await session.invoke(
+                                            raw.functions.upload.ReuploadCdnFile(
+                                                file_token=r.file_token,
+                                                request_token=r2.request_token
+                                            )
                                         )
-                                    )
-                                except VolumeLocNotFound:
-                                    break
-                                else:
-                                    continue
+                                    except VolumeLocNotFound:
+                                        return None
+                                    else:
+                                        continue
+
+                                return r2
+
+                        # Pipeline: the next CDN chunk is already in flight
+                        # while the current one is decrypted, verified and
+                        # written, so the CDN round trip no longer serializes
+                        # with the CPU/disk work.
+                        prefetch_task = None
+
+                        while True:
+                            if prefetch_task is None:
+                                prefetch_task = self.loop.create_task(
+                                    _fetch_cdn(offset_bytes)
+                                )
+
+                            r2 = await prefetch_task
+                            prefetch_task = None
+
+                            if r2 is None:
+                                break
 
                             chunk = r2.bytes
+                            has_next = len(chunk) == chunk_size and current + 1 < total
+
+                            if has_next:
+                                prefetch_task = self.loop.create_task(
+                                    _fetch_cdn(offset_bytes + chunk_size)
+                                )
 
                             # https://core.telegram.org/cdn#decrypting-files
                             decrypted_chunk = await self.loop.run_in_executor(
@@ -2348,6 +2525,10 @@ class Client(Methods):
                                     _t.add_done_callback(_report_tasks.discard)
 
                             if len(chunk) < chunk_size or current >= total:
+                                if prefetch_task is not None:
+                                    prefetch_task.cancel()
+                                    await asyncio.gather(prefetch_task, return_exceptions=True)
+                                    prefetch_task = None
                                 await asyncio.gather(*_report_tasks, return_exceptions=True)
                                 if _stop_requested:
                                     raise pyrogram.StopTransmission
@@ -2358,6 +2539,9 @@ class Client(Methods):
                             if not _t.done():
                                 _t.cancel()
                         await asyncio.gather(*_report_tasks, return_exceptions=True)
+                        if prefetch_task is not None and not prefetch_task.done():
+                            prefetch_task.cancel()
+                            await asyncio.gather(prefetch_task, return_exceptions=True)
                         await cdn_session.stop()
             except Exception:
                 raise

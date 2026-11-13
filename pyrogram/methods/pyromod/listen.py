@@ -107,6 +107,10 @@ class Listen:
 
         self.listeners[listener_type].append(listener)
 
+        dispatcher = getattr(self, "dispatcher", None)
+        if dispatcher and hasattr(dispatcher, "park"):
+            await dispatcher.park()
+
         try:
             return await asyncio.wait_for(future, timeout)
         except asyncio.exceptions.TimeoutError:
@@ -119,3 +123,6 @@ class Listen:
                     )
             elif PyromodConfig.throw_exceptions:
                 raise ListenerTimeout(timeout)
+        finally:
+            if dispatcher and hasattr(dispatcher, "unpark"):
+                await dispatcher.unpark()

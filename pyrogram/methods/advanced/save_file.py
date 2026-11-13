@@ -32,7 +32,7 @@ from typing import Union, Callable, Optional
 import pyrogram
 from pyrogram import StopTransmission
 from pyrogram import raw
-from pyrogram.errors import FloodWait, FloodPremiumWait
+from pyrogram.errors import Flood, FloodWait, FloodPremiumWait, RPCError
 from pyrogram.methods.rate_limiter import AdaptiveBucket
 from pyrogram.session import Session
 
@@ -256,6 +256,35 @@ class SaveFile:
                                 e.value, _flood_count, _flood_seconds, _pacer.rate,
                             )
                         await asyncio.sleep(e.value)
+                    except Flood as e:
+                        # Generic flood errors (no typed FloodWait/FloodPremiumWait
+                        # subclass matched). Sleep for the requested time when the
+                        # server gave one, otherwise a short bounded delay.
+                        delay = e.value if isinstance(e.value, int) and 0 < e.value <= 300 else 5.0
+                        slept += delay
+                        _flood_count += 1
+                        _flood_seconds += delay
+                        if self.sleep_threshold >= 0 and slept > self.sleep_threshold * MAX_FLOOD_WAITS:
+                            raise
+                        _pacer.on_flood()
+                        if is_bot:
+                            _pacer.pause(delay)
+                        log.warning(
+                            "Upload flood (%s); sleeping %.1fs (count=%d, total=%ss)",
+                            e.value, delay, _flood_count, _flood_seconds,
+                        )
+                        await asyncio.sleep(delay)
+                    except RPCError as e:
+                        code = getattr(e, "CODE", 0) or 0
+                        if not 500 <= code < 600:
+                            raise
+                        # Transient 5xx server errors (INTERNAL_SERVER_ERROR,
+                        # TELEGRAM_OFFLINE, ...) must not fail the whole upload:
+                        # parts are idempotent, so the worker can resend this
+                        # exact part without touching the connection state.
+                        raise UploadPartRejected(
+                            f"server error {code}: {e.value}"
+                        ) from e
 
             def _next_upload_session(current):
                 if not worker_sessions:
@@ -402,14 +431,14 @@ class SaveFile:
                 rate_step = float(os.environ.get("DZGRAM_BOT_UPLOAD_STEP", 16))
             elif is_premium:
                 rate_limit = int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_RATE", 300))
-                pool_size = min(int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_POOL", 14)), POOL_SIZE)
+                pool_size = min(int(os.environ.get("DZGRAM_PREMIUM_UPLOAD_POOL", 16)), POOL_SIZE)
                 rate_floor = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_FLOOR", 16))
-                rate_step = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_STEP", 16))
+                rate_step = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_STEP", 20))
             else:
                 rate_limit = int(os.environ.get("DZGRAM_UPLOAD_RATE", 50))
                 pool_size = min(int(os.environ.get("DZGRAM_UPLOAD_POOL", 12)), POOL_SIZE)
                 rate_floor = float(os.environ.get("DZGRAM_UPLOAD_FLOOR", 4))
-                rate_step = float(os.environ.get("DZGRAM_UPLOAD_STEP", 1))
+                rate_step = float(os.environ.get("DZGRAM_UPLOAD_STEP", 2))
             rate_backoff = float(os.environ.get("DZGRAM_UPLOAD_BACKOFF", 0.85))
             rate_recover = float(os.environ.get("DZGRAM_UPLOAD_RECOVER", 0.5))
 
@@ -453,8 +482,8 @@ class SaveFile:
             next_batch_task = None
             _pacer = AdaptiveBucket(
                 rate=rate_limit,
-                ceiling=max(rate_limit, 300),
-                burst=32 if is_bot else 16,
+                ceiling=max(rate_limit, 350 if is_premium else 300),
+                burst=32 if (is_bot or is_premium) else 24,
                 floor=max(0.1, rate_floor),
                 step=max(0.1, rate_step),
                 backoff=min(max(rate_backoff, 0.1), 1.0),
