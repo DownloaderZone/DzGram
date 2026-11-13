@@ -1332,6 +1332,7 @@ class Message(Object, Update):
             web_page_url = None
 
             checklist = None
+            widget = None
 
             if media:
                 if isinstance(media, raw.types.MessageMediaPhoto):
