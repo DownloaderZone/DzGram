@@ -42,7 +42,7 @@ PART_SIZE = 512 * 1024
 POOL_SIZE = 20
 READ_BUFFER = 4 * 1024 * 1024
 MAX_BATCH = 4 * 1024 * 1024
-STALL_TIMEOUT = int(os.environ.get("DZGRAM_UPLOAD_STALL_TIMEOUT", 180))
+STALL_TIMEOUT = int(os.environ.get("DZGRAM_UPLOAD_STALL_TIMEOUT", 300))
 UPLOAD_MEDIA_TIMEOUT = int(os.environ.get("DZGRAM_UPLOAD_TIMEOUT", 60))
 UPLOAD_PART_RETRIES = max(1, int(os.environ.get("DZGRAM_UPLOAD_PART_RETRIES", 3)))
 UPLOAD_SESSION_RETRIES = max(1, int(os.environ.get("DZGRAM_UPLOAD_SESSION_RETRIES", 3)))
@@ -217,6 +217,9 @@ class SaveFile:
             errors = []
             _flood_count = 0
             _flood_seconds = 0.0
+            # Monotonic time at which the current flood cooldown ends; acks can
+            # legitimately be silent until then, so stall clocks anchor here.
+            _last_flood = [0.0]
             _started_at = time.monotonic()
 
             async def _send_part(session, data):
@@ -244,6 +247,9 @@ class SaveFile:
                         slept += e.value
                         _flood_count += 1
                         _flood_seconds += e.value
+                        # Let the drain loop know acks are paused by the server,
+                        # not stuck: the stall clock must not run while sleeping.
+                        _last_flood[0] = time.monotonic() + e.value
                         if self.sleep_threshold >= 0 and slept > self.sleep_threshold * MAX_FLOOD_WAITS:
                             raise
                         _pacer.on_flood()
@@ -264,6 +270,7 @@ class SaveFile:
                         slept += delay
                         _flood_count += 1
                         _flood_seconds += delay
+                        _last_flood[0] = time.monotonic() + delay
                         if self.sleep_threshold >= 0 and slept > self.sleep_threshold * MAX_FLOOD_WAITS:
                             raise
                         _pacer.on_flood()
@@ -622,6 +629,14 @@ class SaveFile:
                             except asyncio.TimeoutError:
                                 await _check_workers()
                                 _now = time.monotonic()
+                                if _last_flood[0] > _now or _pacer.pause_remaining() > 0:
+                                    # Workers are sleeping out a flood wait or
+                                    # paused by flood control: throttling, not
+                                    # a stall. Reset the clock; the sleeps are
+                                    # bounded inside _send_part.
+                                    _stalled_since = 0.0
+                                    await asyncio.sleep(1)
+                                    continue
                                 if _stalled_since == 0.0:
                                     _stalled_since = _now
                                     log.warning(
@@ -673,6 +688,7 @@ class SaveFile:
                 last_acked = _acked[0]
                 last_completion = time.monotonic()
                 total_parts = file_total_parts - _starting_part
+                _revived = False
 
                 while _acked[0] < total_parts and not errors:
                     await _check_workers()
@@ -683,11 +699,49 @@ class SaveFile:
                         await _report(_acked[0])
                         continue
 
-                    if time.monotonic() - last_completion > STALL_TIMEOUT:
+                    now = time.monotonic()
+                    # Flood waits freeze the workers while the server cools
+                    # down. That is throttling, not a stall: anchor the stall
+                    # clock at the end of the current flood sleep.
+                    if _last_flood[0] > now:
+                        await asyncio.sleep(0.05)
+                        continue
+
+                    if now - last_completion > STALL_TIMEOUT:
+                        if not _revived:
+                            # One recovery attempt: a session whose connection
+                            # dropped mid-part never acks again on its own.
+                            _revived = True
+                            restarted = 0
+                            for session in dict.fromkeys(worker_sessions):
+                                connected = getattr(session, "is_connected", None)
+                                if connected is not None and not connected.is_set():
+                                    restarted += 1
+                                    try:
+                                        await session.restart(max_attempts=2)
+                                    except Exception:
+                                        log.warning(
+                                            "Upload session restart during drain "
+                                            "failed", exc_info=True
+                                        )
+                            if restarted:
+                                last_completion = now
+                                log.warning(
+                                    "Upload drain restarted %d dead session(s); "
+                                    "granting a grace window for the remaining "
+                                    "%d part(s)",
+                                    restarted, total_parts - _acked[0],
+                                )
+                                continue
+
+                        paused = _pacer.pause_remaining()
                         raise TimeoutError(
                             "Upload stalled while awaiting part acknowledgements "
                             f"({total_parts - _acked[0]} of {total_parts} part(s) "
-                            "still unacknowledged)"
+                            f"still unacknowledged; flood_waits={_flood_count} "
+                            f"totalling {_flood_seconds:.0f}s, "
+                            f"pacer={_pacer.rate:.1f} parts/s"
+                            f"{f', paused for another {paused:.0f}s' if paused else ''})"
                         )
 
                     await asyncio.sleep(0.05)

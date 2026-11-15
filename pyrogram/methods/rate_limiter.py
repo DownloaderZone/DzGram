@@ -138,6 +138,10 @@ class AdaptiveBucket(TokenBucket):
         self._tokens = 0.0
         self._last_refill = self._paused_until
 
+    def pause_remaining(self) -> float:
+        """Seconds until the current flood cooldown ends; 0 when not paused."""
+        return max(0.0, self._paused_until - time.monotonic())
+
 
 class RateLimiter:
     """Per-category client-side rate limiter.

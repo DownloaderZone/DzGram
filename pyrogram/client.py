@@ -1741,20 +1741,26 @@ class Client(Methods):
                 shutil.move(temp_file_path, file_path)
                 return file_path
 
-    async def _refresh_file_reference(self, file_id: FileId, lock: "asyncio.Lock" = None) -> bool:
+    async def _refresh_file_reference(
+        self, file_id: FileId, lock: "asyncio.Lock" = None, stale: bytes = None
+    ) -> bool:
         """Renew an expired file reference by re-fetching its source message.
 
         Works only when the file id carries a message context (see
-        ``download_media``). The refresh is bounded: at most
-        ``FILE_REFERENCE_REFRESH_ATTEMPTS`` actual re-fetches per file id, and
-        callers whose captured reference is already the latest one (stale
-        workers racing a refresh that another worker performed) get to rebuild
-        their request without a second fetch.
+        ``download_media``). *stale* is the reference the failed request
+        actually carried: when it differs from the current one, another worker
+        already refreshed the reference in our back and only a request rebuild
+        is needed — no second fetch. Otherwise the refresh is bounded by
+        ``FILE_REFERENCE_REFRESH_ATTEMPTS`` actual re-fetches per file id.
         """
         context = getattr(file_id, "_refresh_context", None)
 
         if not context:
             return False
+
+        if stale is not None and stale != file_id.file_reference:
+            # Our request raced a refresh that already succeeded.
+            return True
 
         if lock is not None:
             async with lock:
@@ -1767,7 +1773,6 @@ class Client(Methods):
             return False
 
         chat_id, message_id = context
-        previous = file_id.file_reference
 
         try:
             refreshed = await self.get_messages(chat_id, [message_id])
@@ -1782,14 +1787,9 @@ class Client(Methods):
 
         message = refreshed[0] if utils.is_list_like(refreshed) else refreshed
 
-        if not isinstance(message, types.Message):
-            return False
-
         new_reference = _find_file_reference(message, file_id.media_id)
 
-        # A refresh that does not change the reference is a dead end: retrying
-        # with it would loop forever.
-        if new_reference is None or new_reference == previous:
+        if new_reference is None:
             return False
 
         file_id.file_reference = new_reference
@@ -1952,6 +1952,7 @@ class Client(Methods):
                         if _paced:
                             await _getfile_rate.acquire()
                         try:
+                            used_reference = location.file_reference
                             result = await media.invoke(
                                 raw.functions.upload.GetFile(location=location, offset=at, limit=chunk_size),
                                 timeout=Session.MEDIA_WAIT_TIMEOUT, sleep_threshold=0,
@@ -1959,8 +1960,8 @@ class Client(Methods):
                             _getfile_rate.on_success()
                             return result
                         except FileReferenceExpired:
-                            if location.file_reference == file_id.file_reference and not (
-                                await self._refresh_file_reference(file_id, refresh_lock)
+                            if not await self._refresh_file_reference(
+                                file_id, refresh_lock, stale=used_reference
                             ):
                                 # This request already carried the latest
                                 # reference and refreshing it did not help.
@@ -2031,6 +2032,7 @@ class Client(Methods):
                 try:
                     while True:
                         try:
+                            used_reference = location.file_reference
                             r = await session.invoke(
                                 raw.functions.upload.GetFile(
                                     location=location,
@@ -2042,8 +2044,8 @@ class Client(Methods):
                             )
                             break
                         except FileReferenceExpired:
-                            if location.file_reference == file_id.file_reference and not (
-                                await self._refresh_file_reference(file_id, refresh_lock)
+                            if not await self._refresh_file_reference(
+                                file_id, refresh_lock, stale=used_reference
                             ):
                                 raise
                             location = _build_location()
@@ -2140,6 +2142,7 @@ class Client(Methods):
                         while current < total:
                             while True:
                                 try:
+                                    used_reference = location.file_reference
                                     r = await session.invoke(
                                         raw.functions.upload.GetFile(
                                             location=location,
@@ -2151,8 +2154,8 @@ class Client(Methods):
                                     )
                                     break
                                 except FileReferenceExpired:
-                                    if location.file_reference == file_id.file_reference and not (
-                                        await self._refresh_file_reference(file_id, refresh_lock)
+                                    if not await self._refresh_file_reference(
+                                        file_id, refresh_lock, stale=used_reference
                                     ):
                                         raise
                                     location = _build_location()
