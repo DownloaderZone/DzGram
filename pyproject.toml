@@ -57,13 +57,14 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build]
-include = ["pyrogram/py.typed"]
+include = ["pyrogram/py.typed", "dzgram/py.typed"]
 exclude = ["tests", "docs", "requirements.lock", "requirements-dev.lock", ".github", ".gitignore"]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "compiler",
     "pyrogram",
+    "dzgram",
 ]
 exclude = [
     ".github/",
@@ -81,7 +82,7 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 ignore-vcs = true
-packages = ["pyrogram"]
+packages = ["pyrogram", "dzgram"]
 
 [project.optional-dependencies]
 dev = [
