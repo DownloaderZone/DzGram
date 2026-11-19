@@ -44,10 +44,20 @@ class GetShareTheme:
 
                 theme = await app.get_share_theme(chat_id)
         """
-        return types.ShareTheme._parse(
-            await self.invoke(
-                raw.functions.messages.GetShareTheme(
-                    peer=await self.resolve_peer(chat_id)
-                )
+        peer = await self.resolve_peer(chat_id)
+
+        if isinstance(peer, raw.types.InputPeerChannel):
+            r = await self.invoke(
+                raw.functions.channels.GetFullChannel(channel=peer)
             )
-        )
+        elif isinstance(peer, (raw.types.InputPeerUser, raw.types.InputPeerSelf)):
+            r = await self.invoke(
+                raw.functions.users.GetFullUser(id=peer)
+            )
+        else:
+            raise ValueError(f"Share themes are not supported for {type(peer).__name__} chats")
+
+        if isinstance(peer, raw.types.InputPeerChannel):
+            return types.ShareTheme._parse(r.full_chat.share_theme)
+
+        return types.ShareTheme._parse(r.full_user.share_theme)

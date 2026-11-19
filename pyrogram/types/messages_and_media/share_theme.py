@@ -55,7 +55,9 @@ class ShareTheme(Object):
         self.emojis = emojis
 
     @staticmethod
-    def _parse(theme: "raw.base.ShareTheme") -> "ShareTheme":
+    def _parse(theme: Optional["raw.base.ShareTheme"]) -> "ShareTheme":
+        if theme is None:
+            return ShareTheme()
         if isinstance(theme, raw.types.ShareThemeGift):
             return ShareTheme(gift=theme.stargift)
         if isinstance(theme, raw.types.ShareThemeEmojiBackdrop):

@@ -162,10 +162,13 @@ Connection counts can be tuned before starting your client:
 
 ### API layer
 
-DzGram 2.3.41 targets Telegram layer 233. The update syncs the layer 233
-schema with the latest TGScheme extract (wallet-backed widget queries,
-forum sidebar flags, news-channel statuses) plus high-level wrappers for the
-widget, stats, folder and contact card RPCs.
+DzGram 2.3.42 targets Telegram layer 234. The update syncs the schema with
+the latest [TGScheme](https://github.com/TGScheme/Schema) extract (cross-checked
+against Kurigram and TDLib): on-chain star gift sales and offers, AI compose
+chat styles, forum topics in dialogs and update differences, bot invites and
+the transcription model descriptor. `messages.getShareTheme` was removed by
+Telegram; `get_share_theme` now reads the theme from the full channel/user
+info instead.
 
 It also validates and normalises local photo uploads, converting unsupported
 image formats (for example GIF) and heavy lossless PNGs to JPEG when Pillow is

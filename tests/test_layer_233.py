@@ -61,7 +61,7 @@ from pyrogram.raw.core import TLObject
     ),
 ])
 def test_layer_233_wire_roundtrip(value):
-    assert layer == 233
+    assert layer >= 233
     encoded = value.write()
     buffer = BytesIO(encoded)
     decoded = TLObject.read(buffer)
