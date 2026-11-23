@@ -118,6 +118,7 @@ def forum_topic():
         expected_amount=100,
         show_name=True,
     ),
+    raw.functions.messages.GetTranscriptionModels(version=1),
 ])
 def test_layer_234_wire_roundtrip(value):
     assert layer == 234
