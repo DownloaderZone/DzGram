@@ -46,6 +46,7 @@ from pyrogram.raw.all import layer
 from pyrogram.raw.core import FutureSalt, FutureSalts, Int, Message, MsgContainer, TLObject
 
 from .internals import MsgFactory, MsgId
+from .internals.data_center import DataCenter
 
 log = logging.getLogger(__name__)
 
@@ -168,6 +169,12 @@ class Session:
         raw.functions.InvokeWithBusinessConnection,
     )
 
+    # help.GetConfig results harvested by any session in this process, keyed
+    # by test mode. Telegram publishes several IPs per data center; when the
+    # hardcoded default one blackholes (TCP connects but replies never come
+    # back), the extras give start() something else to dial without a restart.
+    DC_ADDRESS_CACHE: Dict[bool, Any] = {}
+
     def __init__(
         self,
         client: "pyrogram.Client",
@@ -187,6 +194,7 @@ class Session:
         self.is_cdn = is_cdn
         self.server_address = server_address
         self.port = port
+        self._address_index = 0
 
         self.connection: Optional[Connection] = None
 
@@ -256,6 +264,29 @@ class Session:
         except RuntimeError:
             return utils.get_event_loop()
 
+    def _address_candidates(self) -> List[tuple]:
+        if self.server_address and self.port is not None:
+            return [(self.server_address, self.port)]
+
+        candidates = [DataCenter(self.dc_id, self.test_mode, self.client.ipv6, self.is_media)]
+
+        config = Session.DC_ADDRESS_CACHE.get(self.test_mode)
+        if config is not None:
+            for option in config.dc_options:
+                if option.id != self.dc_id:
+                    continue
+                if bool(option.ipv6) != bool(self.client.ipv6):
+                    continue
+                if bool(option.media_only) != bool(self.is_media):
+                    continue
+                if option.secret:
+                    continue
+                candidate = (option.ip_address, option.port)
+                if candidate not in candidates:
+                    candidates.append(candidate)
+
+        return candidates
+
     async def start(self, max_attempts: Optional[int] = None):
         if self.is_connected.is_set():
             return
@@ -291,6 +322,10 @@ class Session:
                     except Exception as e:
                         log.debug("Error closing stale connection: %s %s", type(e).__name__, e)
 
+                candidates = self._address_candidates()
+                offset = self._address_index % len(candidates)
+                address, port = candidates[offset]
+
                 connection = Connection(
                     self.dc_id,
                     self.test_mode,
@@ -298,8 +333,8 @@ class Session:
                     self.client.proxy,
                     self.is_media,
                     loop=self._loop(),
-                    server_address=self.server_address,
-                    port=self.port,
+                    server_address=address,
+                    port=port,
                 )
 
                 handshake_timeout = min(self.START_TIMEOUT * attempt, self.WAIT_TIMEOUT)
@@ -346,6 +381,7 @@ class Session:
                         )
                         if not self.is_media:
                             self.client._dc_config = config
+                        Session.DC_ADDRESS_CACHE[self.test_mode] = config
 
                     self.ping_task = self._loop().create_task(self.ping_worker())
 
@@ -377,9 +413,10 @@ class Session:
                         raise
 
                     backoff = min(2 ** (attempt - 1), 30)
+                    self._address_index = offset + 1
                     (log.warning if attempt >= 3 else log.debug)(
-                        "Session start attempt %d failed, retrying in %ss: %s",
-                        attempt, backoff, str(e) or type(e).__name__
+                        "Session start attempt %d failed using %s:%s, retrying in %ss: %s",
+                        attempt, address, port, backoff, str(e) or type(e).__name__
                     )
                     await asyncio.sleep(backoff)
                 except RPCError as e:

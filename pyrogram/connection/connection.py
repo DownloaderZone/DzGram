@@ -91,7 +91,7 @@ class Connection:
             protocol = self.mode(self.ipv6, self.proxy, loop=self.loop)
 
             try:
-                log.info("Connecting...")
+                log.info("Connecting to %s:%s...", *self.address)
                 await protocol.connect(self.address)
             except OSError as e:
                 log.warning("Unable to connect due to network issues: %s", e)
@@ -105,7 +105,9 @@ class Connection:
                 self.protocol = protocol
                 self.connected = True
 
-                log.info("Connected! %s DC%s%s - IPv%s - %s",
+                log.info("Connected! %s:%s %s DC%s%s - IPv%s - %s",
+                         self.address[0],
+                         self.address[1],
                          "Test" if self.test_mode else "Production",
                          self.dc_id,
                          " (media)" if self.media else "",

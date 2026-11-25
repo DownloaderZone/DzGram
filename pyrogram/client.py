@@ -1648,6 +1648,8 @@ class Client(Methods):
         config = getattr(self, "_dc_config", None)
         if config is None:
             config = self._dc_config = await self.invoke(raw.functions.help.GetConfig())
+            from pyrogram.session.session import Session
+            Session.DC_ADDRESS_CACHE[self.test_mode] = config
 
         if dc_id is None:
             dc_id = config.this_dc

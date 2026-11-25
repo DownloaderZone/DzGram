@@ -394,3 +394,74 @@ async def test_recv_worker_schedules_restart_without_blocking():
 
     release.set()
     await task
+
+
+class TimeoutConnection:
+    """Stands in for Connection; records every address start() dials."""
+
+    instances = []
+
+    def __init__(self, dc_id, test_mode, ipv6, proxy, is_media=False,
+                 loop=None, server_address=None, port=None):
+        self.address = (server_address, port)
+        TimeoutConnection.instances.append(self.address)
+
+    async def connect(self):
+        raise TimeoutError
+
+    def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_start_rotates_to_alternate_dc_address_after_timeout(monkeypatch):
+    from pyrogram.session.internals.data_center import DataCenter
+
+    default = DataCenter(2, False, False, False)
+    alternate = ("203.0.113.10", 5222)
+    Session.DC_ADDRESS_CACHE[False] = SimpleNamespace(dc_options=[
+        # Same as the hardcoded default: must be dropped as a duplicate.
+        SimpleNamespace(id=2, ip_address=default[0], port=default[1],
+                        ipv6=False, media_only=False, secret=None),
+        # Different DC: skipped.
+        SimpleNamespace(id=3, ip_address="203.0.113.99", port=443,
+                        ipv6=False, media_only=False, secret=None),
+        # Usable fallback for the same DC.
+        SimpleNamespace(id=2, ip_address=alternate[0], port=alternate[1],
+                        ipv6=False, media_only=False, secret=None),
+        # Wrong family: skipped.
+        SimpleNamespace(id=2, ip_address="2001:db8::1", port=443,
+                        ipv6=True, media_only=False, secret=None),
+        # Media-only option for a non-media session: skipped.
+        SimpleNamespace(id=2, ip_address="203.0.113.20", port=443,
+                        ipv6=False, media_only=True, secret=None),
+        # Secret (obfuscated) option: skipped.
+        SimpleNamespace(id=2, ip_address="203.0.113.30", port=443,
+                        ipv6=False, media_only=False, secret=b"\x01"),
+    ])
+    try:
+        session = make_session()
+        TimeoutConnection.instances = []
+        monkeypatch.setattr(session_module, "Connection", TimeoutConnection)
+
+        with pytest.raises(TimeoutError):
+            await session.start(max_attempts=2)
+
+        assert TimeoutConnection.instances == [default, alternate]
+    finally:
+        Session.DC_ADDRESS_CACHE.pop(False, None)
+
+
+@pytest.mark.asyncio
+async def test_start_reuses_default_address_without_cached_options(monkeypatch):
+    from pyrogram.session.internals.data_center import DataCenter
+
+    default = DataCenter(2, False, False, False)
+    session = make_session()
+    TimeoutConnection.instances = []
+    monkeypatch.setattr(session_module, "Connection", TimeoutConnection)
+
+    with pytest.raises(TimeoutError):
+        await session.start(max_attempts=2)
+
+    assert TimeoutConnection.instances == [default, default]
