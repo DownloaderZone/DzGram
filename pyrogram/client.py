@@ -1904,10 +1904,10 @@ class Client(Methods):
                     dl_rate = int(os.environ.get("DZGRAM_PREMIUM_DL_RATE", 150))
                     dl_burst = 60
                 else:
-                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_DL_POOL", 5)))
-                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_DL_WORKERS", 3)))
-                    dl_rate = int(os.environ.get("DZGRAM_DL_RATE", 30))
-                    dl_burst = 15
+                    dl_pool_size = max(1, int(os.environ.get("DZGRAM_DL_POOL", 8)))
+                    dl_workers_per_session = max(1, int(os.environ.get("DZGRAM_DL_WORKERS", 4)))
+                    dl_rate = int(os.environ.get("DZGRAM_DL_RATE", 90))
+                    dl_burst = 45
 
                 total_chunks = min(total, max(0, math.ceil((file_size - offset_bytes) / chunk_size)))
                 pool_size = min(dl_pool_size, total_chunks)
@@ -1940,7 +1940,7 @@ class Client(Methods):
                 prefetch_task = None
                 prefetch_offset = offset_bytes
                 _getfile_rate = AdaptiveBucket(rate=dl_rate, ceiling=max(dl_rate, 200),
-                                               burst=dl_burst, step=8.0 if _is_bot else 0.5)
+                                               burst=dl_burst, step=8.0)
                 _paced = _is_bot or not _is_premium
                 refresh_lock = asyncio.Lock()
 
@@ -2273,7 +2273,9 @@ class Client(Methods):
                             r = None
 
                             if _write_mode:
-                                write_at(_write_fd, chunk_data, offset)
+                                await self.loop.run_in_executor(
+                                    None, write_at, _write_fd, chunk_data, offset
+                                )
                                 buffer_slots.release()
                             else:
                                 received[offset] = chunk_data

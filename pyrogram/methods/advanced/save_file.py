@@ -442,10 +442,10 @@ class SaveFile:
                 rate_floor = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_FLOOR", 16))
                 rate_step = float(os.environ.get("DZGRAM_PREMIUM_UPLOAD_STEP", 20))
             else:
-                rate_limit = int(os.environ.get("DZGRAM_UPLOAD_RATE", 50))
-                pool_size = min(int(os.environ.get("DZGRAM_UPLOAD_POOL", 12)), POOL_SIZE)
+                rate_limit = int(os.environ.get("DZGRAM_UPLOAD_RATE", 110))
+                pool_size = min(int(os.environ.get("DZGRAM_UPLOAD_POOL", 16)), POOL_SIZE)
                 rate_floor = float(os.environ.get("DZGRAM_UPLOAD_FLOOR", 4))
-                rate_step = float(os.environ.get("DZGRAM_UPLOAD_STEP", 2))
+                rate_step = float(os.environ.get("DZGRAM_UPLOAD_STEP", 8))
             rate_backoff = float(os.environ.get("DZGRAM_UPLOAD_BACKOFF", 0.85))
             rate_recover = float(os.environ.get("DZGRAM_UPLOAD_RECOVER", 0.5))
 

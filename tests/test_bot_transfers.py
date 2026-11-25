@@ -1,5 +1,7 @@
 import asyncio
 import io
+import threading
+import time
 from hashlib import md5, sha256
 from types import SimpleNamespace
 
@@ -481,3 +483,84 @@ async def test_download_first_byte_does_not_wait_for_media_handshake():
         task.cancel()
     await asyncio.gather(*pool_tasks, return_exceptions=True)
     client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_download_ramp_reaches_ceiling_quickly_for_all_users():
+    # Regression: non-bot/non-premium downloads ramped at 0.5 parts/s per
+    # tick, needing >5 minutes to reach the 200 ceiling. Every account now
+    # ramps at the same aggressive step.
+    client = Client("ramp", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=False, is_premium=False)
+    bucket = AdaptiveBucket(rate=30, ceiling=200, burst=45, step=8.0,
+                            recover_interval=0.05)
+    for _ in range(40):
+        time.sleep(0.05)
+        bucket.on_success()
+    assert bucket.rate >= 195.0, f"ramp too slow: {bucket.rate} after 2s"
+
+    # The pre-fix step of 0.5 parts/s per tick barely moves off the floor.
+    slow = AdaptiveBucket(rate=30, ceiling=200, burst=45, step=0.5)
+    for _ in range(40):
+        time.sleep(0.05)
+        slow.on_success()
+    assert slow.rate < 100.0
+    client.executor.shutdown(wait=True)
+
+
+@pytest.mark.asyncio
+async def test_download_write_is_offloaded_to_executor(monkeypatch):
+    # Regression: write_at ran synchronously on the event loop, blocking all
+    # workers and network I/O for the duration of each disk write. It must
+    # now run in the client's thread-pool executor.
+    import os
+    import shutil
+    import tempfile
+
+    client = Client("offload", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+    assert client.executor is not None
+
+    calls = []
+    import pyrogram.client as client_module
+    real_write_at = client_module.write_at
+
+    def tracked_write_at(fd, data, offset):
+        calls.append(threading.current_thread() is not threading.main_thread())
+        return real_write_at(fd, data, offset)
+
+    monkeypatch.setattr(client_module, "write_at", tracked_write_at)
+
+    out_dir = tempfile.mkdtemp()
+    out_path = os.path.join(out_dir, "out.bin")
+    file = open(out_path, "w+b")
+
+    class API(Session):
+        def __init__(self):
+            pass
+
+        async def invoke(self, query, **kwargs):
+            return raw.types.upload.File(
+                bytes=b"x" * CHUNK_SIZE, type=None, mtime=0
+            )
+
+    async def get_session(dc_id, is_media=False, **kwargs):
+        return API()
+
+    async def pool(*args):
+        return [API()]
+
+    client.get_session = get_session
+    client._get_media_session_pool = pool
+    try:
+        size = 3 * CHUNK_SIZE
+        async for chunk in client.get_file(
+            make_file_id(), file_size=size, _write_file=file
+        ):
+            pass
+        assert os.path.getsize(out_path) == size
+        assert calls and all(calls), "write_at must not run on the event-loop thread"
+    finally:
+        file.close()
+        client.executor.shutdown(wait=True)
+        shutil.rmtree(out_dir, ignore_errors=True)

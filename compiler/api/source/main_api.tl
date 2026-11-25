@@ -2232,6 +2232,8 @@ aicompose.tones#6c9d0efe hash:long tones:Vector<AiComposeTone> users:Vector<User
 aiComposeToneExample#f1d628ec from:TextWithEntities to:TextWithEntities = AiComposeToneExample;
 
 bots.accessSettings#dd1fbf93 flags:# restricted:flags.0?true add_users:flags.1?Vector<User> = bots.AccessSettings;
+bots.botSettings#f7389abb flags:# inline_mode:flags.0?true privacy_mode:flags.1?true can_join_groups:flags.2?true forum_topic_mode:flags.3?true callback_query_inline:flags.4?true has_topic_sidebar:flags.5?true = bots.BotSettings;
+bots.botFullInfo#e2023df2 flags:# active_usernames:flags.0?Vector<string> inline_query_placeholder:flags.1?string needs_inline_query_location:flags.2?true has_topic_sidebar:flags.3?true settings:flags.4?bots.BotSettings = bots.BotFullInfo;
 
 messages.chatInviteJoinResultOk#445663a7 updates:Updates = messages.ChatInviteJoinResult;
 messages.chatInviteJoinResultWebView#61ca29d3 bot_id:long query_id:long users:Vector<User> = messages.ChatInviteJoinResult;
@@ -3075,6 +3077,9 @@ bots.editAccessSettings#31813cd8 flags:# restricted:flags.0?true bot:InputUser a
 bots.setJoinChatResults#e71a4810 query_id:long result:JoinChatBotResult = Bool;
 bots.addUsername#3501c08a bot:InputUser username:string = Bool;
 bots.removeUsername#c704147d bot:InputUser username:string = Bool;
+bots.getMySettings#3b08776c = bots.BotSettings;
+bots.setMySettings#e70961c4 settings:bots.BotSettings = Bool;
+bots.getFullInfo#e59bdfbd = bots.BotFullInfo;
 
 payments.getPaymentForm#37148dbb flags:# invoice:InputInvoice theme_params:flags.0?DataJSON = payments.PaymentForm;
 payments.getPaymentReceipt#2478d1cc peer:InputPeer msg_id:int = payments.PaymentReceipt;
@@ -3356,4 +3361,4 @@ wallet.tonConnectCloseSession#d63f61ce flags:# session_id:long body:flags.0?byte
 wallet.tonConnectGetSessions#a7ffb56e = wallet.TonConnectSessions;
 wallet.setCardStickers#68509ac flags:# stickers:Vector<InputWalletCardSticker> bg_nft_address:flags.0?string = wallet.Card;
 
-// LAYER 234
+// LAYER 235

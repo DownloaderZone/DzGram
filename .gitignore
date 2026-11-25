@@ -133,3 +133,4 @@ venv.bak/
 /sessions/
 
 test_live.py
+/PLAN.md

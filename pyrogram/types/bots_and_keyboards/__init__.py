@@ -54,11 +54,15 @@ from .switch_inline_query_chosen_chat import SwitchInlineQueryChosenChat
 from .web_app_info import WebAppInfo
 from .managed_bot_created import ManagedBotCreated
 from .managed_bot_updated import ManagedBotUpdated
+from .bot_full_info import BotFullInfo
+from .bot_settings import BotSettings
 from .widget_query import WidgetQuery
 from .widget_query_type import WidgetQueryType
 from .widget_query_wallet import WidgetQueryWallet
 
 __all__ = [
+    "BotFullInfo",
+    "BotSettings",
     "CallbackGame",
     "CallbackQuery",
     "CopyTextButton",
