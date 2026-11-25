@@ -3361,4 +3361,4 @@ wallet.tonConnectCloseSession#d63f61ce flags:# session_id:long body:flags.0?byte
 wallet.tonConnectGetSessions#a7ffb56e = wallet.TonConnectSessions;
 wallet.setCardStickers#68509ac flags:# stickers:Vector<InputWalletCardSticker> bg_nft_address:flags.0?string = wallet.Card;
 
-// LAYER 235
+// LAYER 234

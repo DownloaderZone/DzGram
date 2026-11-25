@@ -121,7 +121,7 @@ def forum_topic():
     raw.functions.messages.GetTranscriptionModels(version=1),
 ])
 def test_layer_234_wire_roundtrip(value):
-    assert layer == 235
+    assert layer == 234
     encoded = value.write()
     buffer = BytesIO(encoded)
     decoded = TLObject.read(buffer)

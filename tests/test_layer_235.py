@@ -17,8 +17,10 @@ def make_settings(**kwargs):
     return raw.types.bots.BotSettings(**kwargs)
 
 
-def test_layer_is_235():
-    assert layer == 235
+def test_layer_is_accepted_by_telegram():
+    # Telegram production currently rejects layer 235 with CONNECTION_LAYER_INVALID;
+    # the Bot API 10.5 constructors ship under the last accepted layer number.
+    assert layer == 234
 
 
 def test_105_constructors_exist():
