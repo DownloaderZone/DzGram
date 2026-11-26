@@ -721,11 +721,7 @@ def test_prepare_photo_upload_passes_structurally_valid_jpeg(monkeypatch):
 
 def test_warpcrypto_api_contract():
     """Pin the warpcrypto surface this library depends on (2.1.0 semantics)."""
-    try:
-        import warpcrypto
-    except ImportError:
-        pytest.skip("warpcrypto not installed")
-
+    import warpcrypto
     from pyrogram.crypto import aes
 
     # IGE roundtrip with a 32-byte IV (Telegram MTProto layout).
