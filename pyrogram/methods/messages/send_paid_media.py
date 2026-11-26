@@ -19,15 +19,18 @@
 
 import io
 import os
+import logging
 import re
 
 from datetime import datetime
 from typing import Union, Optional
 
 import pyrogram
-from pyrogram import enums, raw, types, utils
+from pyrogram import enums, errors, raw, types, utils
 from pyrogram.file_id import FileType
 from .inline_session import get_session
+
+log = logging.getLogger(__name__)
 
 
 class SendPaidMedia:
@@ -193,39 +196,47 @@ class SendPaidMedia:
                     if is_bytes_io and not hasattr(i.cover, "name"):
                         i.cover.name = "cover.jpg"
 
-                    if is_uploaded_file:
-                        i.cover = utils.prepare_photo_upload(i.cover)
-                        video_cover_file = await self.invoke(
-                            raw.functions.messages.UploadMedia(
-                                business_connection_id=business_connection_id,
-                                peer=await self.resolve_peer(chat_id),
-                                media=raw.types.InputMediaUploadedPhoto(
-                                    file=await self.save_file(i.cover)
+                    try:
+                        if is_uploaded_file:
+                            i.cover = utils.prepare_photo_upload(i.cover)
+                            video_cover_file = await self.invoke(
+                                raw.functions.messages.UploadMedia(
+                                    business_connection_id=business_connection_id,
+                                    peer=await self.resolve_peer(chat_id),
+                                    media=raw.types.InputMediaUploadedPhoto(
+                                        file=await self.save_file(i.cover)
+                                    )
                                 )
                             )
-                        )
-                        video_cover_file = raw.types.InputPhoto(
-                            id=video_cover_file.photo.id,
-                            access_hash=video_cover_file.photo.access_hash,
-                            file_reference=video_cover_file.photo.file_reference
-                        )
-                    elif is_external_url:
-                        video_cover_file = await self.invoke(
-                            raw.functions.messages.UploadMedia(
-                                business_connection_id=business_connection_id,
-                                peer=await self.resolve_peer(chat_id),
-                                media=raw.types.InputMediaPhotoExternal(
-                                    url=i.cover
+                            video_cover_file = raw.types.InputPhoto(
+                                id=video_cover_file.photo.id,
+                                access_hash=video_cover_file.photo.access_hash,
+                                file_reference=video_cover_file.photo.file_reference
+                            )
+                        elif is_external_url:
+                            video_cover_file = await self.invoke(
+                                raw.functions.messages.UploadMedia(
+                                    business_connection_id=business_connection_id,
+                                    peer=await self.resolve_peer(chat_id),
+                                    media=raw.types.InputMediaPhotoExternal(
+                                        url=i.cover
+                                    )
                                 )
                             )
+                            video_cover_file = raw.types.InputPhoto(
+                                id=video_cover_file.photo.id,
+                                access_hash=video_cover_file.photo.access_hash,
+                                file_reference=video_cover_file.photo.file_reference
+                            )
+                        else:
+                            video_cover_file = (utils.get_input_media_from_file_id(i.cover, FileType.PHOTO)).id
+                    except errors.RPCError as e:
+                        # A rejected cover must not fail the whole paid-media upload.
+                        log.warning(
+                            "Telegram rejected the video cover (%s); sending without it",
+                            getattr(e, "NAME", e)
                         )
-                        video_cover_file = raw.types.InputPhoto(
-                            id=video_cover_file.photo.id,
-                            access_hash=video_cover_file.photo.access_hash,
-                            file_reference=video_cover_file.photo.file_reference
-                        )
-                    else:
-                        video_cover_file = (utils.get_input_media_from_file_id(i.cover, FileType.PHOTO)).id
+                        video_cover_file = None
 
                 if isinstance(i.media, str):
                     if os.path.isfile(i.media):

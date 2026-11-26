@@ -564,3 +564,93 @@ async def test_download_write_is_offloaded_to_executor(monkeypatch):
         file.close()
         client.executor.shutdown(wait=True)
         shutil.rmtree(out_dir, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_send_video_rejected_cover_falls_back_to_no_cover():
+    """A cover Telegram rejects (PHOTO_SAVE_FILE_INVALID) must not fail the send."""
+    from pyrogram.errors import BadRequest
+
+    jpeg = bytes.fromhex(
+        "ffd8ffe000104a46494600010100000100010000ffdb004300"
+        "080606070605080707070909080a0c140d0c0b0b0c1912130f141d1a1f1e1d1a1c1c"
+        "20242e2720222c231c1c2837292c30313434341f27393d38323c2e333432ffdb0043"
+        "010909090c0b0c180d0d18321c1c3246383346474a4a4a4a4a4a4a4a4a4a4a4a4a4a"
+        "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a"
+        "ffda0008010100000101ffdd002400100000ffd9"
+    )
+
+    client = Client("cover", api_id=1, api_hash="test")
+    client.me = SimpleNamespace(is_bot=True, is_premium=False)
+
+    sent = []
+    seen_uploads = []
+
+    async def invoke(query, **kwargs):
+        if isinstance(query, raw.functions.messages.UploadMedia):
+            seen_uploads.append(query)
+            raise BadRequest("PHOTO_SAVE_FILE_INVALID")
+        assert isinstance(query, raw.functions.messages.SendMedia)
+        sent.append(query)
+        msg = raw.types.Message(
+            id=1, peer_id=raw.types.PeerUser(user_id=1),
+            message="", date=0,
+            media=raw.types.MessageMediaDocument(
+                document=raw.types.Document(
+                    id=1, access_hash=1, file_reference=b"", mime_type="video/mp4",
+                    size=1, date=0, dc_id=1, attributes=[]
+                )
+            )
+        )
+        return raw.types.Updates(
+            updates=[raw.types.UpdateNewMessage(message=msg, pts=1, pts_count=1)],
+            users=[], chats=[], seq=0, date=0
+        )
+
+    client.invoke = invoke
+
+    async def resolve_peer(peer, *args, **kwargs):
+        return raw.types.InputPeerEmpty()
+
+    client.resolve_peer = resolve_peer
+    async def fake_save_file(*a, **k):
+        return raw.types.InputFile(id=1, parts=1, name="f", md5_checksum="x")
+
+    client.save_file = fake_save_file
+    client.guess_mime_type = lambda *a: "video/mp4"
+
+    from pyrogram import utils as _utils
+
+    async def fake_parse(self, text, parse_mode, entities):
+        return {"message": "", "entities": []}
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(_utils, "parse_text_entities", fake_parse)
+    monkey.setattr(_utils, "_get_reply_message_parameters", _asyncfn(None))
+
+    from pyrogram.types.messages_and_media import message as message_mod
+
+    async def fake_message_parse(client, raw_msg, users, chats, **kwargs):
+        return "MESSAGE"
+
+    monkey.setattr(message_mod.Message, "_parse", staticmethod(fake_message_parse))
+    try:
+        video = io.BytesIO(b"video")
+        video.name = "video.mp4"
+        await client.send_video(123, video, cover=io.BytesIO(jpeg), caption="")
+    finally:
+        monkey.undo()
+        client.executor.shutdown(wait=True)
+
+    # Cover upload was attempted once and rejected, then the send still went out.
+    assert len(seen_uploads) == 1
+    assert len(sent) == 1
+    media = sent[0].media
+    assert isinstance(media, raw.types.InputMediaUploadedDocument)
+    assert media.video_cover is None
+
+
+def _asyncfn(value):
+    async def inner(*args, **kwargs):
+        return value
+    return inner
