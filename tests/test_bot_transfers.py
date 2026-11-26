@@ -750,3 +750,36 @@ def test_warpcrypto_api_contract():
     sizes = bytearray(struct.pack("<2i", 48, 48))
     enc_batch = aes.ctr256_encrypt_batch(flat, sizes, key, bytearray(32), bytearray(2))
     assert aes.ctr256_decrypt_batch(enc_batch, sizes, key, bytearray(32), bytearray(2)) == flat
+
+
+def test_warpcrypto_api_contract():
+    """Pin the warpcrypto surface this library depends on (2.1.0 semantics)."""
+    import warpcrypto
+    from pyrogram.crypto import aes
+
+    # IGE roundtrip with a 32-byte IV (Telegram MTProto layout).
+    key = bytes(range(32))
+    iv = bytes(range(32))
+    data = bytes(range(64))
+    assert aes.ige256_decrypt(aes.ige256_encrypt(data, key, iv), key, iv) == data
+
+    # CTR roundtrip; the iv buffer must advance so the stream stays
+    # continuous across successive calls (state byte stays 0 on 2.1.0).
+    iv_b = bytearray(range(16))
+    state = bytearray(1)
+    enc = aes.ctr256_encrypt(data, key, iv_b, state)
+    assert aes.ctr256_decrypt(enc, key, bytearray(range(16)), bytearray(1)) == data
+    assert bytes(iv_b[-1:]) != b"\x0e"  # last counter byte advanced by 4 blocks
+
+    # In-place variants mutate the buffer and return None on 2.1.0.
+    buf = bytearray(data)
+    aes.ctr256_encrypt_inplace(buf, key, bytearray(range(16)), bytearray(1))
+    assert buf != bytearray(data)
+
+    # Batch layout: sizes = flat int32 LE (4*n), ivs = 16*n, states = n.
+    import struct
+
+    flat = bytes(range(96))
+    sizes = bytearray(struct.pack("<2i", 48, 48))
+    enc_batch = aes.ctr256_encrypt_batch(flat, sizes, key, bytearray(32), bytearray(2))
+    assert aes.ctr256_decrypt_batch(enc_batch, sizes, key, bytearray(32), bytearray(2)) == flat
