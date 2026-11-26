@@ -230,8 +230,8 @@ class SendPaidMedia:
                             )
                         else:
                             video_cover_file = (utils.get_input_media_from_file_id(i.cover, FileType.PHOTO)).id
-                    except errors.RPCError as e:
-                        # A rejected cover must not fail the whole paid-media upload.
+                    except Exception as e:
+                        # A bad or rejected cover must not fail the whole upload.
                         log.warning(
                             "Telegram rejected the video cover (%s); sending without it",
                             getattr(e, "NAME", e)

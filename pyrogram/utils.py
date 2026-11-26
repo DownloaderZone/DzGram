@@ -166,11 +166,45 @@ def _transcode_photo(media) -> BytesIO:
 
             stream = BytesIO()
             stream.name = "photo.jpg"
-            image.save(stream, format="JPEG", quality=90, optimize=True)
+            image.save(
+                stream,
+                format="JPEG",
+                quality=90,
+                optimize=True,
+                progressive=False
+            )
             stream.seek(0)
             return stream
     except Exception as e:
         raise ValueError(f"{name} is not a valid photo: {e}") from e
+
+
+def _is_structurally_valid_jpeg(head: bytes, media) -> bool:
+    """Cheap check that a JPEG-looking stream has a frame and a proper EOI.
+
+    Catches truncated grabs and files that merely start with the SOI marker,
+    which Telegram answers with ``PHOTO_SAVE_FILE_INVALID``.
+    """
+    if isinstance(media, (str, os.PathLike)):
+        with open(media, "rb") as fp:
+            data = fp.read()
+    else:
+        position = media.tell()
+        media.seek(0)
+        data = media.read()
+        media.seek(position)
+
+    if not data.endswith(b"\xff\xd9"):
+        return False
+
+    # SOF0/1 (baseline) or SOF2 (progressive) must be present.
+    for i in range(2, len(data) - 3):
+        if data[i] != 0xFF:
+            continue
+        marker = data[i + 1]
+        if marker in (0xC0, 0xC1, 0xC2):
+            return True
+    return False
 
 
 def prepare_photo_upload(media):
@@ -178,15 +212,21 @@ def prepare_photo_upload(media):
 
     Telegram stores uploaded pictures with a strict set of extensions
     (``.jpg``, ``.jpeg``, ``.gif``, ``.png``, ``.tif``, ``.bmp``) and refuses
-    files whose extension does not match the real image format. Animated GIFs
-    and heavy lossless images can additionally fail with
-    ``PHOTO_SAVE_FILE_INVALID``, because Telegram cannot re-compress them.
+    files whose extension does not match the real image format. It also
+    answers covers/pictures it cannot re-compress with
+    ``PHOTO_SAVE_FILE_INVALID`` — mislabeled files, odd color spaces (CMYK),
+    truncated streams and heavy lossless images all trigger it.
 
-    This helper renames valid JPEG/PNG streams, re-encodes other image formats
-    (and heavy PNGs) to JPEG, and caps the longest side at 2560 px, mirroring
-    the official clients. Conversion requires Pillow; without it the original
-    file is kept unless it is definitely unsupported.
+    With Pillow installed this helper therefore always decodes the image and
+    re-encodes it as a clean baseline RGB JPEG capped at 2560 px on the
+    longest side, mirroring the official clients, so Telegram has nothing
+    left to choke on. Without Pillow, valid-looking JPEG/PNG streams are
+    renamed if needed and structurally validated (frame marker + EOI);
+    anything else is rejected locally instead of at Telegram.
     """
+    if HAS_PILLOW:
+        return _transcode_photo(media)
+
     name = (
         os.path.basename(media)
         if isinstance(media, (str, os.PathLike))
@@ -197,26 +237,24 @@ def prepare_photo_upload(media):
     head = _read_file_head(media)
 
     if head.startswith(b"\xff\xd8\xff"):
+        if not _is_structurally_valid_jpeg(head, media):
+            raise ValueError(f"{name} is truncated or not a real JPEG")
+
         if extension in _JPEG_EXTENSIONS:
             return media
 
         return _copy_photo_stream(media, "photo.jpg")
 
     if head.startswith(b"\x89PNG\r\n\x1a\n"):
-        heavy = HAS_PILLOW and _photo_size(media) > _PHOTO_HEAVY_BYTES
-
         if extension not in _PNG_EXTENSIONS:
-            if heavy:
-                return _transcode_photo(media)
-
             return _copy_photo_stream(media, "photo.png")
 
-        if not heavy:
-            return media
+        return media
 
-        return _transcode_photo(media)
-
-    return _transcode_photo(media)
+    raise ValueError(
+        f"{name} is not a recognizable photo. Install Pillow to allow "
+        "automatic conversion of other image formats."
+    )
 
 
 def get_input_media_from_file_id(

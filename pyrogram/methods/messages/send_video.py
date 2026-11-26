@@ -26,7 +26,7 @@ from typing import Union, Optional, Callable
 
 import pyrogram
 from pyrogram import StopTransmission, enums, raw, types, utils
-from pyrogram.errors import FilePartMissing, RPCError
+from pyrogram.errors import FilePartMissing
 from pyrogram.file_id import FileType
 from .inline_session import get_session
 
@@ -304,9 +304,10 @@ class SendVideo:
                     )
                 else:
                     coverfile = (utils.get_input_media_from_file_id(cover, FileType.PHOTO)).id
-            except RPCError as e:
-                # A rejected cover (e.g. PHOTO_SAVE_FILE_INVALID) must not kill
-                # an upload that may have taken hours; send the video without it.
+            except Exception as e:
+                # A bad or rejected cover (unreadable file, PHOTO_SAVE_FILE_INVALID,
+                # etc.) must not kill an upload that may have taken hours; send the
+                # video without it.
                 log.warning(
                     "Telegram rejected the video cover (%s); sending without it",
                     getattr(e, "NAME", e)

@@ -1,5 +1,6 @@
 import asyncio
 import io
+from io import BytesIO
 import threading
 import time
 from hashlib import md5, sha256
@@ -571,14 +572,13 @@ async def test_send_video_rejected_cover_falls_back_to_no_cover():
     """A cover Telegram rejects (PHOTO_SAVE_FILE_INVALID) must not fail the send."""
     from pyrogram.errors import BadRequest
 
-    jpeg = bytes.fromhex(
-        "ffd8ffe000104a46494600010100000100010000ffdb004300"
-        "080606070605080707070909080a0c140d0c0b0b0c1912130f141d1a1f1e1d1a1c1c"
-        "20242e2720222c231c1c2837292c30313434341f27393d38323c2e333432ffdb0043"
-        "010909090c0b0c180d0d18321c1c3246383346474a4a4a4a4a4a4a4a4a4a4a4a4a4a"
-        "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a"
-        "ffda0008010100000101ffdd002400100000ffd9"
-    )
+    from PIL import Image
+
+    cover_buf = BytesIO()
+    cover_buf.name = "cover.jpg"
+    Image.new("RGB", (640, 360), "red").save(cover_buf, format="JPEG")
+    cover_buf.seek(0)
+    jpeg = cover_buf
 
     client = Client("cover", api_id=1, api_hash="test")
     client.me = SimpleNamespace(is_bot=True, is_premium=False)
@@ -637,7 +637,7 @@ async def test_send_video_rejected_cover_falls_back_to_no_cover():
     try:
         video = io.BytesIO(b"video")
         video.name = "video.mp4"
-        await client.send_video(123, video, cover=io.BytesIO(jpeg), caption="")
+        await client.send_video(123, video, cover=jpeg, caption="")
     finally:
         monkey.undo()
         client.executor.shutdown(wait=True)
@@ -654,3 +654,66 @@ def _asyncfn(value):
     async def inner(*args, **kwargs):
         return value
     return inner
+
+
+def test_prepare_photo_upload_reencodes_covers_to_clean_jpeg():
+    """Anything sent as a photo/cover comes out as a baseline RGB JPEG <=2560px."""
+    from PIL import Image
+
+    from pyrogram import utils
+
+    # CMYK JPEG (a Telegram reject trigger) re-encodes to RGB.
+    cmyk = BytesIO()
+    cmyk.name = "cmyk.jpg"
+    Image.new("CMYK", (100, 80), (0, 255, 255, 0)).save(cmyk, format="JPEG")
+
+    out = utils.prepare_photo_upload(cmyk)
+    with Image.open(out) as image:
+        assert image.format == "JPEG"
+        assert image.mode == "RGB"
+        assert not image.info.get("progression", False)
+
+    # Oversized PNG gets downscaled to the 2560px cap and converted.
+    big = BytesIO()
+    big.name = "big.png"
+    Image.new("RGB", (3000, 100), "red").save(big, format="PNG")
+
+    out = utils.prepare_photo_upload(big)
+    with Image.open(out) as image:
+        assert image.format == "JPEG"
+        assert max(image.size) <= utils._PHOTO_MAX_SIDE
+
+    # A mislabeled WebP masquerading as .jpg is re-encoded, not passed through.
+    webp = BytesIO()
+    webp.name = "cover.jpg"
+    Image.new("RGB", (40, 40), "blue").save(webp, format="WEBP")
+
+    out = utils.prepare_photo_upload(webp)
+    with Image.open(out) as image:
+        assert image.format == "JPEG"
+
+
+def test_prepare_photo_upload_rejects_truncated_jpeg_without_pillow(monkeypatch):
+    """Without Pillow, a truncated JPEG fails locally, not at Telegram."""
+    from pyrogram import utils
+
+    truncated = BytesIO(bytes.fromhex("ffd8ffe000104a4649460001") + b"garbage")
+    truncated.name = "cover.jpg"
+
+    monkeypatch.setattr(utils, "HAS_PILLOW", False)
+    with pytest.raises(ValueError, match="truncated"):
+        utils.prepare_photo_upload(truncated)
+
+
+def test_prepare_photo_upload_passes_structurally_valid_jpeg(monkeypatch):
+    """Without Pillow, a real JPEG with matching extension is kept as-is."""
+    from pyrogram import utils
+
+    from PIL import Image
+
+    jpeg = BytesIO()
+    jpeg.name = "cover.jpg"
+    Image.new("RGB", (64, 64), "red").save(jpeg, format="JPEG")
+
+    monkeypatch.setattr(utils, "HAS_PILLOW", False)
+    assert utils.prepare_photo_upload(jpeg) is jpeg

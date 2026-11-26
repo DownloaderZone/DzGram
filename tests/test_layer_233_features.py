@@ -3,6 +3,9 @@ from io import BytesIO
 
 import pytest
 
+from PIL import Image
+
+from PIL import Image
 from pyrogram import Client, raw, types, utils
 from pyrogram.methods.chats.join_chat import JoinChat
 
@@ -32,38 +35,49 @@ class JoinChatClient(JoinChat):
 
 def test_prepare_photo_upload_renames_jpe(tmp_path):
     photo = tmp_path / "poster_b5848fb5.jpe"
-    photo.write_bytes(b"\xff\xd8\xff\xe0" + b"0" * 32)
+    Image.new("RGB", (32, 32), "red").save(str(photo), format="JPEG")
+    original = photo.read_bytes()
 
     prepared = utils.prepare_photo_upload(str(photo))
 
     assert prepared.name == "photo.jpg"
-    assert prepared.getvalue() == photo.read_bytes()
+    with Image.open(prepared) as image:
+        assert image.format == "JPEG"
+        assert image.size == (32, 32)
 
 
 def test_prepare_photo_upload_fixes_mismatched_extension(tmp_path):
     photo = tmp_path / "photo.jpg"
-    photo.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+    Image.new("RGB", (32, 32), "red").save(str(photo), format="PNG")
 
     prepared = utils.prepare_photo_upload(str(photo))
 
-    assert prepared.name == "photo.png"
-    assert prepared.getvalue() == photo.read_bytes()
+    assert prepared.name == "photo.jpg"
+    with Image.open(prepared) as image:
+        assert image.format == "JPEG"
 
 
 def test_prepare_photo_upload_keeps_jpg(tmp_path):
     photo = tmp_path / "photo.jpg"
-    photo.write_bytes(b"\xff\xd8\xff\xe0" + b"0" * 32)
+    Image.new("RGB", (32, 32), "red").save(str(photo), format="JPEG")
 
-    assert utils.prepare_photo_upload(str(photo)) == str(photo)
+    prepared = utils.prepare_photo_upload(str(photo))
+
+    with Image.open(prepared) as image:
+        assert image.format == "JPEG"
+        assert image.size == (32, 32)
 
 
 def test_prepare_photo_upload_names_unnamed_bytes_io():
-    stream = BytesIO(b"\xff\xd8\xff\xe0" + b"0" * 32)
+    stream = BytesIO()
+    stream.name = ""
+    Image.new("RGB", (32, 32), "red").save(stream, format="JPEG")
 
     prepared = utils.prepare_photo_upload(stream)
 
     assert prepared.name == "photo.jpg"
-    assert prepared.getvalue() == stream.getvalue()
+    with Image.open(prepared) as image:
+        assert image.format == "JPEG"
 
 
 def test_prepare_photo_upload_rejects_text(tmp_path):
