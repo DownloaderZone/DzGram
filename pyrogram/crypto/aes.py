@@ -72,6 +72,15 @@ try:
         ivs: bytearray,
         states: bytearray,
     ) -> bytes:
+        # warpcrypto 2.x layout: `sizes` is a flat little-endian int32 array
+        # (4 bytes per chunk), `ivs` holds 16 bytes per chunk and `states`
+        # 1 byte per chunk.
+        n = len(sizes) // 4
+        if len(ivs) != 16 * n or len(states) != n:
+            raise ValueError(
+                f"batch needs {4 * n} size bytes, {16 * n} iv bytes and {n} state bytes"
+            )
+
         return warpcrypto.ctr256_encrypt_batch(
             _bytes(data_flat), _bytearray(sizes), _bytes(key), _bytearray(ivs), _bytearray(states)
         )
@@ -84,6 +93,12 @@ try:
         ivs: bytearray,
         states: bytearray,
     ) -> bytes:
+        n = len(sizes) // 4
+        if len(ivs) != 16 * n or len(states) != n:
+            raise ValueError(
+                f"batch needs {4 * n} size bytes, {16 * n} iv bytes and {n} state bytes"
+            )
+
         return warpcrypto.ctr256_decrypt_batch(
             _bytes(data_flat), _bytearray(sizes), _bytes(key), _bytearray(ivs), _bytearray(states)
         )
