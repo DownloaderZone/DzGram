@@ -89,8 +89,10 @@ class SendRichMessage:
                 markdown=rich_text,
             )
 
+        peer = await self.resolve_peer(chat_id)
+
         rpc = raw.functions.messages.SendMessage(
-            peer=await self.resolve_peer(chat_id),
+            peer=peer,
             message="",
             random_id=self.rnd_id(),
             no_webpage=disable_web_page_preview if disable_web_page_preview is not None else None,
@@ -121,6 +123,32 @@ class SendRichMessage:
         else:
             r = await self.invoke(rpc, sleep_threshold=60)
 
+        if isinstance(r, raw.types.UpdateShortSentMessage):
+            peer_id = (
+                peer.user_id
+                if isinstance(peer, raw.types.InputPeerUser)
+                else -peer.chat_id
+            )
+
+            return types.Message(
+                id=r.id,
+                outgoing=r.out,
+                date=utils.timestamp_to_datetime(r.date),
+                entities=[
+                    types.MessageEntity._parse(None, entity, {})
+                    for entity in r.entities
+                ] if r.entities else None,
+                message_auto_delete_timer_changed=types.MessageAutoDeleteTimerChanged(
+                    message_auto_delete_time=r.ttl_period
+                ) if r.ttl_period else None,
+                chat=types.Chat(
+                    id=peer_id,
+                    type=enums.ChatType.PRIVATE,
+                    client=self
+                ),
+                client=self
+            )
+
         for i in r.updates:
             if isinstance(i, (raw.types.UpdateNewMessage,
                               raw.types.UpdateNewChannelMessage,
@@ -130,4 +158,14 @@ class SendRichMessage:
                     {i.id: i for i in r.users},
                     {i.id: i for i in r.chats},
                     is_scheduled=isinstance(i, raw.types.UpdateNewScheduledMessage)
+                )
+            elif isinstance(i, raw.types.UpdateBotNewBusinessMessage):
+                return await types.Message._parse(
+                    self,
+                    i.message,
+                    {i.id: i for i in r.users},
+                    {i.id: i for i in r.chats},
+                    business_connection_id=getattr(i, "connection_id", business_connection_id),
+                    raw_reply_to_message=i.reply_to_message,
+                    replies=0
                 )
