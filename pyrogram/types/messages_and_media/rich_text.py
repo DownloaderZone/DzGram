@@ -26,6 +26,22 @@ from pyrogram import raw, types, utils
 from ..object import Object
 
 
+def _plain_text(content) -> str:
+    """Plain text of a parsed rich text node.
+
+    Nodes whose inner text is styled (e.g. an italic hashtag) parse to
+    RichText objects or lists of them instead of a string, so anything that
+    needs the raw text has to flatten them first.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, (list, tuple)):
+        return "".join(_plain_text(item) for item in content)
+    return _plain_text(getattr(content, "text", None))
+
+
 class RichText(Object):
     """This object represents a rich formatted text.
 
@@ -196,7 +212,7 @@ class RichText(Object):
 
             return RichTextMention(
                 text=content,
-                username=content.lstrip("@"),
+                username=_plain_text(content).lstrip("@"),
             )
 
         if isinstance(rich_text, raw.types.TextHashtag):
@@ -204,7 +220,7 @@ class RichText(Object):
 
             return RichTextHashtag(
                 text=content,
-                hashtag=content.lstrip("#"),
+                hashtag=_plain_text(content).lstrip("#"),
             )
 
         if isinstance(rich_text, raw.types.TextCashtag):
@@ -212,7 +228,7 @@ class RichText(Object):
 
             return RichTextCashtag(
                 text=content,
-                cashtag=content.lstrip("$"),
+                cashtag=_plain_text(content).lstrip("$"),
             )
 
         if isinstance(rich_text, raw.types.TextBotCommand):
@@ -220,7 +236,7 @@ class RichText(Object):
 
             return RichTextBotCommand(
                 text=content,
-                bot_command=content.lstrip("/"),
+                bot_command=_plain_text(content).lstrip("/"),
             )
 
         if isinstance(rich_text, raw.types.TextAnchor):

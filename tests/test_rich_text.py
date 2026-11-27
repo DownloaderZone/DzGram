@@ -143,6 +143,69 @@ def test_rich_text_bot_command():
     assert result.bot_command == "start"
 
 
+def test_rich_text_mention_styled():
+    result = run(
+        types.RichText._parse(
+            client,
+            raw.types.TextMention(text=raw.types.TextItalic(text=plain("@user"))),
+        )
+    )
+    assert isinstance(result, types.RichTextMention)
+    assert result.username == "user"
+    assert isinstance(result.text, types.RichTextItalic)
+
+
+def test_rich_text_hashtag_styled():
+    result = run(
+        types.RichText._parse(
+            client,
+            raw.types.TextHashtag(text=raw.types.TextItalic(text=plain("#tag"))),
+        )
+    )
+    assert isinstance(result, types.RichTextHashtag)
+    assert result.hashtag == "tag"
+    assert isinstance(result.text, types.RichTextItalic)
+
+
+def test_rich_text_hashtag_styled_concat():
+    result = run(
+        types.RichText._parse(
+            client,
+            raw.types.TextHashtag(
+                text=raw.types.TextConcat(
+                    texts=[raw.types.TextBold(text=plain("#mir")), plain("ror")]
+                )
+            ),
+        )
+    )
+    assert isinstance(result, types.RichTextHashtag)
+    assert result.hashtag == "mirror"
+
+
+def test_rich_text_cashtag_styled():
+    result = run(
+        types.RichText._parse(
+            client,
+            raw.types.TextCashtag(text=raw.types.TextUnderline(text=plain("$USD"))),
+        )
+    )
+    assert isinstance(result, types.RichTextCashtag)
+    assert result.cashtag == "USD"
+    assert isinstance(result.text, types.RichTextUnderline)
+
+
+def test_rich_text_bot_command_styled():
+    result = run(
+        types.RichText._parse(
+            client,
+            raw.types.TextBotCommand(text=raw.types.TextSpoiler(text=plain("/start"))),
+        )
+    )
+    assert isinstance(result, types.RichTextBotCommand)
+    assert result.bot_command == "start"
+    assert isinstance(result.text, types.RichTextSpoiler)
+
+
 def test_rich_text_custom_emoji():
     result = run(
         types.RichText._parse(
